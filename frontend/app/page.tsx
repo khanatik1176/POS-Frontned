@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import ThemeToggle from './components/ThemeToggle';
-import { API_URL } from '@/lib/api';
+import { apiFetch } from '@/lib/api';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -26,13 +26,11 @@ export default function LoginPage() {
     setLoading(true);
     setError('');
     try {
-      const response = await fetch(`${API_URL}/auth/login/`, {
+      const data = await apiFetch<{ access: string }>('/auth/login/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password }),
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.detail || 'Invalid username or password');
       localStorage.setItem('accessToken', data.access);
       router.push('/dashboard');
     } catch (err) {
