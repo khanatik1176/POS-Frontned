@@ -7,12 +7,144 @@ import { Order, Product } from '@/lib/types';
 import ThemeToggle from '../components/ThemeToggle';
 import CreateOrderModal from '../components/CreateOrderModal';
 import DeliverOrderModal from '../components/DeliverOrderModal';
-import { LogOut } from 'lucide-react';
+import {
+  CircleHelp,
+  Facebook,
+  Globe,
+  Instagram,
+  Link2,
+  LogOut,
+  Music2,
+  Youtube,
+} from 'lucide-react';
 
 const statusClass: Record<string, string> = {
-  ordered: 'text-neutral-900 dark:text-white',
-  verified: 'text-neutral-500 dark:text-neutral-300',
-  completed: 'text-neutral-900 dark:text-white',
+  ordered: 'text-amber-700 dark:text-amber-300',
+  verified: 'text-sky-700 dark:text-sky-300',
+  completed: 'text-emerald-700 dark:text-emerald-300',
+};
+
+const customerStatusClass: Record<string, string> = {
+  new: 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300',
+  renewal: 'bg-aqua-100 text-aqua-700 dark:bg-aqua-900/40 dark:text-aqua-300',
+};
+
+const actionClass = {
+  verify: 'border-amber-300 bg-amber-100/70 text-amber-800 hover:bg-amber-200/70 dark:border-amber-700 dark:bg-amber-900/35 dark:text-amber-300 dark:hover:bg-amber-900/50',
+  deliver: 'border-sky-300 bg-sky-100/70 text-sky-800 hover:bg-sky-200/70 dark:border-sky-700 dark:bg-sky-900/35 dark:text-sky-300 dark:hover:bg-sky-900/50',
+  done: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
+};
+
+const statusCodeMap: Record<number, 'ordered' | 'verified' | 'completed'> = {
+  1: 'ordered',
+  2: 'verified',
+  3: 'completed',
+};
+
+const customerStatusCodeMap: Record<number, 'new' | 'renewal'> = {
+  1: 'new',
+  2: 'renewal',
+};
+
+const toTitleCase = (value: string) => value.charAt(0).toUpperCase() + value.slice(1);
+
+const getStatusCode = (order: Order) => {
+  if (order.status_detail?.code) return order.status_detail.code;
+  if (typeof order.status === 'string') return order.status;
+  if (typeof order.status === 'number') return statusCodeMap[order.status] || 'ordered';
+  return 'ordered';
+};
+
+const getStatusLabel = (order: Order) => {
+  if (order.status_detail?.name) return order.status_detail.name;
+  return toTitleCase(getStatusCode(order));
+};
+
+const getCustomerStatusCode = (order: Order) => {
+  if (order.customer_status_detail?.code) return order.customer_status_detail.code;
+  if (typeof order.customer_status === 'string') return order.customer_status;
+  if (typeof order.customer_status === 'number') return customerStatusCodeMap[order.customer_status] || 'new';
+  return 'new';
+};
+
+const getCustomerStatusLabel = (order: Order) => {
+  if (order.customer_status_detail?.name) return order.customer_status_detail.name;
+  return toTitleCase(getCustomerStatusCode(order));
+};
+
+const getPlatformLabel = (order: Order) => {
+  if (order.platform_type_detail?.name) return order.platform_type_detail.name;
+  if (typeof order.platform_type === 'string') return order.platform_type;
+  return String(order.platform_type ?? '');
+};
+
+const getPlatformCode = (order: Order) => {
+  if (order.platform_type_detail?.code) return order.platform_type_detail.code.toLowerCase();
+  if (typeof order.platform_type === 'string') return order.platform_type.toLowerCase();
+  return '';
+};
+
+const getPlatformIcon = (platformCode: string) => {
+  const key = platformCode.toLowerCase();
+
+  if (['facebook', 'fb', 'meta'].includes(key)) return Facebook;
+  if (['instagram', 'ig'].includes(key)) return Instagram;
+  if (['youtube', 'yt'].includes(key)) return Youtube;
+  if (['website', 'web', 'site', 'blog', 'landing-page'].includes(key)) return Globe;
+  if (['tiktok', 'tik-tok'].includes(key)) return Music2;
+
+  return CircleHelp;
+};
+
+const getPaymentMethodLabel = (order: Order) => {
+  if (order.payment_method_detail?.name) return order.payment_method_detail.name;
+  if (typeof order.payment_method === 'string') return order.payment_method;
+  return String(order.payment_method ?? '');
+};
+
+const getPaymentMediumLabel = (order: Order) => {
+  if (order.payment_medium_detail?.name) return order.payment_medium_detail.name;
+  if (typeof order.payment_medium === 'string') return order.payment_medium;
+  return String(order.payment_medium ?? '');
+};
+
+const getPrimaryReference = (order: Order) => {
+  if (order.reference_number_value) return order.reference_number_value;
+  if (typeof order.reference_number === 'string') return order.reference_number;
+  return String(order.reference_number ?? '');
+};
+
+const getOrderItemsSummary = (order: Order) => {
+  const items = order.items || [];
+  if (items.length === 0) {
+    return {
+      productNames: order.product_name ? [order.product_name] : [],
+      packageNames: order.package_type_name ? [order.package_type_name] : [],
+      quantity: order.quantity || 0,
+    };
+  }
+
+  return {
+    productNames: items.map((item) => item.product_name).filter(Boolean),
+    packageNames: items.map((item) => item.package_type_name).filter(Boolean),
+    quantity: items.reduce((sum, item) => sum + (item.quantity || 0), 0),
+  };
+};
+
+const formatEntryTime = (value: string) => {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+
+  const day = date.getDate();
+  const month = date.toLocaleString('en-US', { month: 'short' }).toLowerCase();
+  const year = date.getFullYear();
+
+  const rawHours = date.getHours();
+  const hours12 = rawHours % 12 || 12;
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  const meridiem = rawHours >= 12 ? 'PM' : 'AM';
+
+  return `${day} ${month} ${year}. ${hours12}.${minutes}${meridiem}`;
 };
 
 const initialFilters = {
@@ -46,10 +178,10 @@ export default function DashboardPage() {
     try {
       setLoading(true);
       const [productData, orderData] = await Promise.all([
-        apiFetch<Product[]>('/products/'),
+        apiFetch<Product[] | { results?: Product[] }>('http://127.0.0.1:8000/api/products/'),
         fetchOrders(activeFilters),
       ]);
-      setProducts(productData);
+      setProducts(Array.isArray(productData) ? productData : (productData.results ?? []));
       setOrders(Array.isArray(orderData) ? orderData : (orderData.results ?? []));
     } finally {
       setLoading(false);
@@ -57,7 +189,7 @@ export default function DashboardPage() {
   }, [fetchOrders]);
 
   useEffect(() => {
-    const token = localStorage.getItem('accessToken');
+    const token = localStorage.getItem('accessToken') || localStorage.getItem('token');
     const theme = localStorage.getItem('theme') || 'light';
     document.documentElement.classList.toggle('dark', theme === 'dark');
     if (!token) {
@@ -69,7 +201,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     const timeout = setTimeout(async () => {
-      if (!localStorage.getItem('accessToken')) return;
+      if (!localStorage.getItem('accessToken') && !localStorage.getItem('token')) return;
       try {
         const data = await fetchOrders(filters);
         setOrders(Array.isArray(data) ? data : (data.results ?? []));
@@ -91,14 +223,15 @@ export default function DashboardPage() {
 
   const logout = () => {
     localStorage.removeItem('accessToken');
+    localStorage.removeItem('token');
     router.push('/');
   };
 
   const stats = useMemo(() => ({
     total: orders.length,
-    ordered: orders.filter((o) => o.status === 'ordered').length,
-    verified: orders.filter((o) => o.status === 'verified').length,
-    completed: orders.filter((o) => o.status === 'completed').length,
+    ordered: orders.filter((o) => getStatusCode(o) === 'ordered').length,
+    verified: orders.filter((o) => getStatusCode(o) === 'verified').length,
+    completed: orders.filter((o) => getStatusCode(o) === 'completed').length,
   }), [orders]);
 
   return (
@@ -183,7 +316,7 @@ export default function DashboardPage() {
                 <table className="min-w-[1100px] w-full border-collapse">
                   <thead>
                     <tr>
-                      {['Customer', 'URL', 'Platform', 'Product', 'Package', 'Qty', 'Payment', 'Primary Ref', 'Previous Ref', 'New Ref', 'Status', 'Customer Status', 'Entry Time', 'Actions'].map((head) => (
+                      {['Customer', 'Platform', 'Product', 'Package', 'Qty', 'Payment', 'Primary Ref', 'Previous Ref', 'New Ref', 'Status', 'Customer Status', 'Entry Time', 'Actions'].map((head) => (
                         <th key={head} className="border-b border-neutral-300 px-3 py-3 text-left text-[11px] uppercase tracking-[0.06em] text-neutral-500 dark:border-neutral-700 dark:text-neutral-300">{head}</th>
                       ))}
                     </tr>
@@ -192,32 +325,64 @@ export default function DashboardPage() {
                     {orders.map((order) => (
                       <tr key={order.id}>
                         <td className="border-b border-neutral-300 px-3 py-3 align-top dark:border-neutral-700">{order.customer_name}</td>
-                        <td className="max-w-[210px] break-all border-b border-neutral-300 px-3 py-3 align-top dark:border-neutral-700"><a href={order.url} target="_blank" rel="noreferrer">{order.url}</a></td>
-                        <td className="border-b border-neutral-300 px-3 py-3 align-top dark:border-neutral-700">{order.platform_type}</td>
-                        <td className="border-b border-neutral-300 px-3 py-3 align-top dark:border-neutral-700">{order.product_name}</td>
-                        <td className="border-b border-neutral-300 px-3 py-3 align-top dark:border-neutral-700">{order.package_type_name}</td>
-                        <td className="border-b border-neutral-300 px-3 py-3 align-top dark:border-neutral-700">{order.quantity}</td>
-                        <td className="border-b border-neutral-300 px-3 py-3 align-top dark:border-neutral-700"><div>{order.payment_method}</div><div className="text-xs text-neutral-500 dark:text-neutral-300">{order.payment_medium}</div></td>
-                        <td className="border-b border-neutral-300 px-3 py-3 align-top dark:border-neutral-700">{order.reference_number_value}</td>
-                        <td className="border-b border-neutral-300 px-3 py-3 align-top dark:border-neutral-700">{order.previous_reference_value || '—'}</td>
-                        <td className="border-b border-neutral-300 px-3 py-3 align-top dark:border-neutral-700">{order.delivered_reference_value || '—'}</td>
-                        <td className="border-b border-neutral-300 px-3 py-3 align-top dark:border-neutral-700"><span className={`inline-flex rounded-full border border-current px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider ${statusClass[order.status]}`}>{order.status}</span></td>
-                        <td className="border-b border-neutral-300 px-3 py-3 align-top dark:border-neutral-700">{order.customer_status}</td>
-                        <td className="border-b border-neutral-300 px-3 py-3 align-top dark:border-neutral-700">{new Date(order.entry_time).toLocaleString()}</td>
                         <td className="border-b border-neutral-300 px-3 py-3 align-top dark:border-neutral-700">
-                          {order.status === 'ordered' && (
-                            <button className="inline-flex items-center justify-center gap-2 rounded-lg border border-neutral-300 bg-white/40 px-3 py-2 text-xs font-medium transition hover:-translate-y-0.5 dark:border-neutral-700 dark:bg-neutral-900/40" onClick={() => verifyOrder(order.id)} title="Verify">✔ Verify</button>
+                          <div className="flex items-center gap-2">
+                            {(() => {
+                              const PlatformIcon = getPlatformIcon(getPlatformCode(order));
+                              return (
+                                <div className="group relative inline-flex">
+                                  <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-neutral-300 bg-white/70 text-neutral-900 dark:border-neutral-700 dark:bg-neutral-900/70 dark:text-white">
+                                    <PlatformIcon size={16} />
+                                  </span>
+                                  <span className="pointer-events-none invisible absolute left-1/2 top-full z-30 mt-2 w-max -translate-x-1/2 rounded-md bg-neutral-900 px-2 py-1 text-[11px] text-white opacity-0 transition group-hover:visible group-hover:opacity-100 dark:bg-white dark:text-neutral-900">
+                                    {getPlatformLabel(order)}
+                                  </span>
+                                </div>
+                              );
+                            })()}
+
+                            <a
+                              href={order.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="group relative inline-flex h-8 w-8 items-center justify-center rounded-lg border border-neutral-300 bg-white/70 text-neutral-900 transition hover:-translate-y-0.5 dark:border-neutral-700 dark:bg-neutral-900/70 dark:text-white"
+                              aria-label="Open URL"
+                            >
+                              <Link2 size={16} />
+                              <span className="pointer-events-none invisible absolute left-1/2 top-full z-30 mt-2 max-w-[280px] -translate-x-1/2 truncate rounded-md bg-neutral-900 px-2 py-1 text-[11px] text-white opacity-0 transition group-hover:visible group-hover:opacity-100 dark:bg-white dark:text-neutral-900">
+                                {order.url}
+                              </span>
+                            </a>
+                          </div>
+                        </td>
+                        <td className="border-b border-neutral-300 px-3 py-3 align-top dark:border-neutral-700">{getOrderItemsSummary(order).productNames.join(', ') || '—'}</td>
+                        <td className="border-b border-neutral-300 px-3 py-3 align-top dark:border-neutral-700">{getOrderItemsSummary(order).packageNames.join(', ') || '—'}</td>
+                        <td className="border-b border-neutral-300 px-3 py-3 align-top dark:border-neutral-700">{getOrderItemsSummary(order).quantity || '—'}</td>
+                        <td className="border-b border-neutral-300 px-3 py-3 align-top dark:border-neutral-700"><div>{getPaymentMethodLabel(order)}</div><div className="text-xs text-neutral-500 dark:text-neutral-300">{getPaymentMediumLabel(order)}</div></td>
+                        <td className="border-b border-neutral-300 px-3 py-3 align-top dark:border-neutral-700">{getPrimaryReference(order)}</td>
+                        <td className="border-b border-neutral-300 px-3 py-3 align-top dark:border-neutral-700">{order.previous_reference_value || '—'}</td>
+                        <td className="border-b border-neutral-300 px-3 py-3 align-top dark:border-neutral-700">{order.delivered_reference || '—'}</td>
+                        <td className="border-b border-neutral-300 px-3 py-3 align-top dark:border-neutral-700"><span className={`inline-flex rounded-full border border-current px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider ${statusClass[getStatusCode(order)]}`}>{getStatusLabel(order)}</span></td>
+                        <td className="border-b border-neutral-300 px-3 py-3 align-top dark:border-neutral-700">
+                          <span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider ${customerStatusClass[getCustomerStatusCode(order)] || 'bg-neutral-200 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-200'}`}>
+                            {getCustomerStatusLabel(order)}
+                          </span>
+                        </td>
+                        <td className="border-b border-neutral-300 px-3 py-3 align-top dark:border-neutral-700">{formatEntryTime(order.entry_time)}</td>
+                        <td className="border-b border-neutral-300 px-3 py-3 align-top dark:border-neutral-700">
+                          {getStatusCode(order) === 'ordered' && (
+                            <button className={`inline-flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium transition hover:-translate-y-0.5 ${actionClass.verify}`} onClick={() => verifyOrder(order.id)} title="Verify">✔ Verify</button>
                           )}
-                          {order.status === 'verified' && (
-                            <button className="inline-flex items-center justify-center gap-2 rounded-lg border border-neutral-300 bg-white/40 px-3 py-2 text-xs font-medium transition hover:-translate-y-0.5 dark:border-neutral-700 dark:bg-neutral-900/40" onClick={() => setDeliveryOrder(order)} title="Delivered">📦 Deliver</button>
+                          {getStatusCode(order) === 'verified' && (
+                            <button className={`inline-flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium transition hover:-translate-y-0.5 ${actionClass.deliver}`} onClick={() => setDeliveryOrder(order)} title="Delivered">📦 Deliver</button>
                           )}
-                          {order.status === 'completed' && <span className="text-sm text-neutral-500 dark:text-neutral-300">Done</span>}
+                          {getStatusCode(order) === 'completed' && <span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider ${actionClass.done}`}>Done</span>}
                         </td>
                       </tr>
                     ))}
                     {orders.length === 0 && (
                       <tr>
-                        <td colSpan={14} className="border-b border-neutral-300 px-3 py-4 text-sm text-neutral-500 dark:border-neutral-700 dark:text-neutral-300">No orders found.</td>
+                        <td colSpan={13} className="border-b border-neutral-300 px-3 py-4 text-sm text-neutral-500 dark:border-neutral-700 dark:text-neutral-300">No orders found.</td>
                       </tr>
                     )}
                   </tbody>
@@ -230,31 +395,55 @@ export default function DashboardPage() {
                     <div className="mb-2 flex items-start justify-between gap-2">
                       <div>
                         <p className="text-sm font-semibold">{order.customer_name}</p>
-                        <a href={order.url} target="_blank" rel="noreferrer" className="text-xs break-all text-neutral-500 dark:text-neutral-300">{order.url}</a>
+                        <div className="mt-1 flex items-center gap-2">
+                          {(() => {
+                            const PlatformIcon = getPlatformIcon(getPlatformCode(order));
+                            return (
+                              <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-neutral-300 bg-white/70 text-neutral-900 dark:border-neutral-700 dark:bg-neutral-900/70 dark:text-white" title={getPlatformLabel(order)}>
+                                <PlatformIcon size={14} />
+                              </span>
+                            );
+                          })()}
+                          <a
+                            href={order.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-neutral-300 bg-white/70 text-neutral-900 dark:border-neutral-700 dark:bg-neutral-900/70 dark:text-white"
+                            title={order.url}
+                            aria-label="Open URL"
+                          >
+                            <Link2 size={14} />
+                          </a>
+                        </div>
                       </div>
-                      <span className={`inline-flex rounded-full border border-current px-2 py-1 text-[10px] font-bold uppercase tracking-wider ${statusClass[order.status]}`}>{order.status}</span>
+                      <span className={`inline-flex rounded-full border border-current px-2 py-1 text-[10px] font-bold uppercase tracking-wider ${statusClass[getStatusCode(order)]}`}>{getStatusLabel(order)}</span>
                     </div>
                     <div className="grid grid-cols-1 gap-2 text-xs sm:grid-cols-2">
-                      <div><span className="text-neutral-500 dark:text-neutral-300">Platform:</span> {order.platform_type}</div>
-                      <div><span className="text-neutral-500 dark:text-neutral-300">Product:</span> {order.product_name}</div>
-                      <div><span className="text-neutral-500 dark:text-neutral-300">Package:</span> {order.package_type_name}</div>
-                      <div><span className="text-neutral-500 dark:text-neutral-300">Qty:</span> {order.quantity}</div>
-                      <div><span className="text-neutral-500 dark:text-neutral-300">Payment:</span> {order.payment_method}</div>
-                      <div><span className="text-neutral-500 dark:text-neutral-300">Medium:</span> {order.payment_medium}</div>
-                      <div><span className="text-neutral-500 dark:text-neutral-300">Primary Ref:</span> {order.reference_number_value}</div>
+                      <div><span className="text-neutral-500 dark:text-neutral-300">Platform:</span> {getPlatformLabel(order)}</div>
+                      <div><span className="text-neutral-500 dark:text-neutral-300">Product:</span> {getOrderItemsSummary(order).productNames.join(', ') || '—'}</div>
+                      <div><span className="text-neutral-500 dark:text-neutral-300">Package:</span> {getOrderItemsSummary(order).packageNames.join(', ') || '—'}</div>
+                      <div><span className="text-neutral-500 dark:text-neutral-300">Qty:</span> {getOrderItemsSummary(order).quantity || '—'}</div>
+                      <div><span className="text-neutral-500 dark:text-neutral-300">Payment:</span> {getPaymentMethodLabel(order)}</div>
+                      <div><span className="text-neutral-500 dark:text-neutral-300">Medium:</span> {getPaymentMediumLabel(order)}</div>
+                      <div><span className="text-neutral-500 dark:text-neutral-300">Primary Ref:</span> {getPrimaryReference(order)}</div>
                       <div><span className="text-neutral-500 dark:text-neutral-300">Prev Ref:</span> {order.previous_reference_value || '—'}</div>
                       <div><span className="text-neutral-500 dark:text-neutral-300">New Ref:</span> {order.delivered_reference_value || '—'}</div>
-                      <div><span className="text-neutral-500 dark:text-neutral-300">Customer:</span> {order.customer_status}</div>
+                      <div>
+                        <span className="text-neutral-500 dark:text-neutral-300">Customer:</span>{' '}
+                        <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${customerStatusClass[getCustomerStatusCode(order)] || 'bg-neutral-200 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-200'}`}>
+                          {getCustomerStatusLabel(order)}
+                        </span>
+                      </div>
                     </div>
-                    <p className="mt-2 text-xs text-neutral-500 dark:text-neutral-300">{new Date(order.entry_time).toLocaleString()}</p>
+                    <p className="mt-2 text-xs text-neutral-500 dark:text-neutral-300">{formatEntryTime(order.entry_time)}</p>
                     <div className="mt-3 flex flex-wrap gap-2">
-                      {order.status === 'ordered' && (
-                        <button className="inline-flex items-center justify-center gap-2 rounded-lg border border-neutral-300 bg-white/40 px-3 py-2 text-xs font-medium transition hover:-translate-y-0.5 dark:border-neutral-700 dark:bg-neutral-900/40" onClick={() => verifyOrder(order.id)} title="Verify">✔ Verify</button>
+                      {getStatusCode(order) === 'ordered' && (
+                        <button className={`inline-flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium transition hover:-translate-y-0.5 ${actionClass.verify}`} onClick={() => verifyOrder(order.id)} title="Verify">✔ Verify</button>
                       )}
-                      {order.status === 'verified' && (
-                        <button className="inline-flex items-center justify-center gap-2 rounded-lg border border-neutral-300 bg-white/40 px-3 py-2 text-xs font-medium transition hover:-translate-y-0.5 dark:border-neutral-700 dark:bg-neutral-900/40" onClick={() => setDeliveryOrder(order)} title="Delivered">📦 Deliver</button>
+                      {getStatusCode(order) === 'verified' && (
+                        <button className={`inline-flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium transition hover:-translate-y-0.5 ${actionClass.deliver}`} onClick={() => setDeliveryOrder(order)} title="Delivered">📦 Deliver</button>
                       )}
-                      {order.status === 'completed' && <span className="text-xs text-neutral-500 dark:text-neutral-300">Done</span>}
+                      {getStatusCode(order) === 'completed' && <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${actionClass.done}`}>Done</span>}
                     </div>
                   </div>
                 ))}
