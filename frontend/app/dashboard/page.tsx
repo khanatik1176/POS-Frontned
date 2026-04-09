@@ -46,6 +46,17 @@ const customerStatusCodeMap: Record<number, 'new' | 'renewal'> = {
   2: 'renewal',
 };
 
+const statusRequestMap: Record<string, string> = {
+  ordered: '1',
+  verified: '2',
+  completed: '3',
+};
+
+const customerStatusRequestMap: Record<string, string> = {
+  new: '1',
+  renewal: '2',
+};
+
 const toTitleCase = (value: string) => value.charAt(0).toUpperCase() + value.slice(1);
 
 const getStatusCode = (order: Order) => {
@@ -147,6 +158,54 @@ const formatEntryTime = (value: string) => {
   return `${day} ${month} ${year}. ${hours12}.${minutes}${meridiem}`;
 };
 
+const sortByEntryTime = (list: Order[], ordering: string) => {
+  const sorted = [...list].sort((a, b) => {
+    const aTime = new Date(a.entry_time).getTime();
+    const bTime = new Date(b.entry_time).getTime();
+    return bTime - aTime;
+  });
+
+  if (ordering === 'entry_time') {
+    return sorted.reverse();
+  }
+
+  return sorted;
+};
+
+const applyClientFilters = (list: Order[], nextFilters: typeof initialFilters) => {
+  const searchValue = nextFilters.search.trim().toLowerCase();
+
+  const filtered = list.filter((order) => {
+    const matchesStatus = nextFilters.status === 'all' || getStatusCode(order) === nextFilters.status;
+    const matchesCustomerStatus = nextFilters.customer_status === 'all' || getCustomerStatusCode(order) === nextFilters.customer_status;
+
+    const itemProductIds = (order.items || []).map((item) => String(item.product));
+    const orderProductId = order.product ? String(order.product) : '';
+    const matchesProduct = nextFilters.product === 'all'
+      || orderProductId === nextFilters.product
+      || itemProductIds.includes(nextFilters.product);
+
+    const searchable = [
+      order.customer_name,
+      order.url,
+      getPrimaryReference(order),
+      getPlatformLabel(order),
+      getPaymentMethodLabel(order),
+      getPaymentMediumLabel(order),
+      ...getOrderItemsSummary(order).productNames,
+      ...getOrderItemsSummary(order).packageNames,
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase();
+    const matchesSearch = !searchValue || searchable.includes(searchValue);
+
+    return matchesStatus && matchesCustomerStatus && matchesProduct && matchesSearch;
+  });
+
+  return sortByEntryTime(filtered, nextFilters.ordering);
+};
+
 const initialFilters = {
   status: 'all',
   product: 'all',
@@ -166,11 +225,14 @@ export default function DashboardPage() {
 
   const fetchOrders = useCallback(async (nextFilters: typeof initialFilters) => {
     const params = new URLSearchParams();
-    if (nextFilters.status !== 'all') params.set('status', nextFilters.status);
+    if (nextFilters.status !== 'all') params.set('status', statusRequestMap[nextFilters.status] || nextFilters.status);
     if (nextFilters.product !== 'all') params.set('product', nextFilters.product);
-    if (nextFilters.customer_status !== 'all') params.set('customer_status', nextFilters.customer_status);
+    if (nextFilters.customer_status !== 'all') params.set('customer_status', customerStatusRequestMap[nextFilters.customer_status] || nextFilters.customer_status);
     if (nextFilters.ordering) params.set('ordering', nextFilters.ordering);
-    if (nextFilters.search) params.set('search', nextFilters.search);
+    if (nextFilters.search) {
+      params.set('search', nextFilters.search);
+      params.set('q', nextFilters.search);
+    }
     return apiFetch<{ results?: Order[] } | Order[]>(`/orders/?${params.toString()}`);
   }, []);
 
@@ -181,8 +243,9 @@ export default function DashboardPage() {
         apiFetch<Product[] | { results?: Product[] }>('http://127.0.0.1:8000/api/products/'),
         fetchOrders(activeFilters),
       ]);
+      const fetchedOrders = Array.isArray(orderData) ? orderData : (orderData.results ?? []);
       setProducts(Array.isArray(productData) ? productData : (productData.results ?? []));
-      setOrders(Array.isArray(orderData) ? orderData : (orderData.results ?? []));
+      setOrders(applyClientFilters(fetchedOrders, activeFilters));
     } finally {
       setLoading(false);
     }
@@ -204,7 +267,8 @@ export default function DashboardPage() {
       if (!localStorage.getItem('accessToken') && !localStorage.getItem('token')) return;
       try {
         const data = await fetchOrders(filters);
-        setOrders(Array.isArray(data) ? data : (data.results ?? []));
+        const fetchedOrders = Array.isArray(data) ? data : (data.results ?? []);
+        setOrders(applyClientFilters(fetchedOrders, filters));
       } catch {
         // ignore transient fetch errors in UI
       }
