@@ -1,8 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { apiFetch } from '@/lib/api';
+import { API_URL, apiFetch } from '@/lib/api';
 import { Order, Product } from '@/lib/types';
 import ThemeToggle from '../components/ThemeToggle';
 import CreateOrderModal from '../components/CreateOrderModal';
@@ -22,23 +22,26 @@ const statusClass: Record<string, string> = {
   ordered: 'text-amber-700 dark:text-amber-300',
   verified: 'text-sky-700 dark:text-sky-300',
   completed: 'text-emerald-700 dark:text-emerald-300',
+  declined: 'text-rose-700 dark:text-rose-300',
 };
 
 const customerStatusClass: Record<string, string> = {
   new: 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300',
-  renewal: 'bg-aqua-100 text-aqua-700 dark:bg-aqua-900/40 dark:text-aqua-300',
+  renewal: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-300',
 };
 
 const actionClass = {
   verify: 'border-amber-300 bg-amber-100/70 text-amber-800 hover:bg-amber-200/70 dark:border-amber-700 dark:bg-amber-900/35 dark:text-amber-300 dark:hover:bg-amber-900/50',
   deliver: 'border-sky-300 bg-sky-100/70 text-sky-800 hover:bg-sky-200/70 dark:border-sky-700 dark:bg-sky-900/35 dark:text-sky-300 dark:hover:bg-sky-900/50',
   done: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
+  declined: 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300',
 };
 
-const statusCodeMap: Record<number, 'ordered' | 'verified' | 'completed'> = {
+const statusCodeMap: Record<number, 'ordered' | 'verified' | 'completed' | 'declined'> = {
   1: 'ordered',
   2: 'verified',
   3: 'completed',
+  4: 'declined',
 };
 
 const customerStatusCodeMap: Record<number, 'new' | 'renewal'> = {
@@ -50,6 +53,7 @@ const statusRequestMap: Record<string, string> = {
   ordered: '1',
   verified: '2',
   completed: '3',
+  declined: '4',
 };
 
 const customerStatusRequestMap: Record<string, string> = {
@@ -214,6 +218,24 @@ const initialFilters = {
   search: '',
 };
 
+const getOrdersWsUrl = (token?: string) => {
+  const configured = process.env.NEXT_PUBLIC_ORDERS_WS_URL;
+  const apiRoot = API_URL.replace(/\/api\/?$/, '');
+  const inferredWsBase = apiRoot.replace(/^http:\/\//, 'ws://').replace(/^https:\/\//, 'wss://');
+  const baseUrl = configured || `${inferredWsBase}/ws/orders/`;
+
+  if (!token) return baseUrl;
+
+  try {
+    const url = new URL(baseUrl);
+    url.searchParams.set('token', token);
+    return url.toString();
+  } catch {
+    const separator = baseUrl.includes('?') ? '&' : '?';
+    return `${baseUrl}${separator}token=${encodeURIComponent(token)}`;
+  }
+};
+
 export default function DashboardPage() {
   const router = useRouter();
   const [orders, setOrders] = useState<Order[]>([]);
@@ -222,6 +244,11 @@ export default function DashboardPage() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [deliveryOrder, setDeliveryOrder] = useState<Order | null>(null);
   const [filters, setFilters] = useState(initialFilters);
+  const latestFiltersRef = useRef(filters);
+
+  useEffect(() => {
+    latestFiltersRef.current = filters;
+  }, [filters]);
 
   const fetchOrders = useCallback(async (nextFilters: typeof initialFilters) => {
     const params = new URLSearchParams();
@@ -233,6 +260,7 @@ export default function DashboardPage() {
       params.set('search', nextFilters.search);
       params.set('q', nextFilters.search);
     }
+    params.set('_ts', String(Date.now()));
     return apiFetch<{ results?: Order[] } | Order[]>(`/orders/?${params.toString()}`);
   }, []);
 
@@ -251,6 +279,12 @@ export default function DashboardPage() {
     }
   }, [fetchOrders]);
 
+  const refreshOrders = useCallback(async (activeFilters: typeof initialFilters) => {
+    const data = await fetchOrders(activeFilters);
+    const fetchedOrders = Array.isArray(data) ? data : (data.results ?? []);
+    setOrders(applyClientFilters(fetchedOrders, activeFilters));
+  }, [fetchOrders]);
+
   useEffect(() => {
     const token = localStorage.getItem('accessToken') || localStorage.getItem('token');
     const theme = localStorage.getItem('theme') || 'light';
@@ -266,16 +300,51 @@ export default function DashboardPage() {
     const timeout = setTimeout(async () => {
       if (!localStorage.getItem('accessToken') && !localStorage.getItem('token')) return;
       try {
-        const data = await fetchOrders(filters);
-        const fetchedOrders = Array.isArray(data) ? data : (data.results ?? []);
-        setOrders(applyClientFilters(fetchedOrders, filters));
+        await refreshOrders(filters);
       } catch {
         // ignore transient fetch errors in UI
       }
     }, 300);
 
     return () => clearTimeout(timeout);
-  }, [fetchOrders, filters]);
+  }, [filters, refreshOrders]);
+
+  useEffect(() => {
+    const token = localStorage.getItem('accessToken') || localStorage.getItem('token');
+    if (!token) return;
+
+    let socket: WebSocket | null = null;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let isClosedByCleanup = false;
+
+    const connect = () => {
+      const wsUrl = getOrdersWsUrl(token);
+      socket = new WebSocket(wsUrl);
+
+      socket.onmessage = () => {
+        void refreshOrders(latestFiltersRef.current);
+      };
+
+      socket.onerror = () => {
+        socket?.close();
+      };
+
+      socket.onclose = () => {
+        if (isClosedByCleanup) return;
+        reconnectTimer = setTimeout(connect, 3000);
+      };
+    };
+
+    connect();
+
+    return () => {
+      isClosedByCleanup = true;
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.close();
+      }
+    };
+  }, [refreshOrders]);
 
   const verifyOrder = async (orderId: number) => {
     const updated = await apiFetch<Order>(`/orders/${orderId}/verify/`, {
@@ -299,9 +368,9 @@ export default function DashboardPage() {
   }), [orders]);
 
   return (
-    <div className="relative min-h-screen bg-neutral-50 text-neutral-900 dark:bg-neutral-950 dark:text-white">
+    <div className="relative min-h-screen overflow-x-hidden bg-neutral-50 text-neutral-900 dark:bg-neutral-950 dark:text-white">
       <div className="pointer-events-none fixed inset-0 z-0 opacity-[0.04] [background-image:linear-gradient(#d7d7d7_1px,transparent_1px),linear-gradient(90deg,#d7d7d7_1px,transparent_1px)] [background-size:40px_40px] dark:[background-image:linear-gradient(#2f2f2f_1px,transparent_1px),linear-gradient(90deg,#2f2f2f_1px,transparent_1px)]" />
-      <div className="relative z-10 mx-auto grid w-full max-w-[1320px] gap-4 px-3 py-4 sm:px-4 md:gap-5 md:px-6 md:py-6 xl:px-8">
+      <div className="relative z-10 mx-auto grid w-full max-w-[1400px] min-w-0 gap-4 px-3 py-4 sm:px-4 md:gap-5 md:px-5 md:py-6 xl:px-7">
         <div className="flex flex-col items-start justify-between gap-3 lg:flex-row lg:items-center">
           <div>
             <h1 className="mb-1 text-2xl font-semibold tracking-tight md:text-3xl">Dashboard</h1>
@@ -322,7 +391,7 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <div className="grid gap-2 rounded-[18px] border border-neutral-300 bg-white/90 p-4 shadow-[0_0_0_1px_rgba(0,0,0,0.08),0_24px_58px_-36px_rgba(0,0,0,0.25)] backdrop-blur-sm md:p-5 dark:border-neutral-700 dark:bg-neutral-900/90 dark:shadow-[0_0_0_1px_rgba(255,255,255,0.08),0_24px_58px_-36px_rgba(255,255,255,0.12)]"><strong>Total</strong><div className="text-3xl font-extrabold tracking-tight">{stats.total}</div></div>
           <div className="grid gap-2 rounded-[18px] border border-neutral-300 bg-white/90 p-4 shadow-[0_0_0_1px_rgba(0,0,0,0.08),0_24px_58px_-36px_rgba(0,0,0,0.25)] backdrop-blur-sm md:p-5 dark:border-neutral-700 dark:bg-neutral-900/90 dark:shadow-[0_0_0_1px_rgba(255,255,255,0.08),0_24px_58px_-36px_rgba(255,255,255,0.12)]"><strong>Ordered</strong><div className="text-3xl font-extrabold tracking-tight">{stats.ordered}</div></div>
           <div className="grid gap-2 rounded-[18px] border border-neutral-300 bg-white/90 p-4 shadow-[0_0_0_1px_rgba(0,0,0,0.08),0_24px_58px_-36px_rgba(0,0,0,0.25)] backdrop-blur-sm md:p-5 dark:border-neutral-700 dark:bg-neutral-900/90 dark:shadow-[0_0_0_1px_rgba(255,255,255,0.08),0_24px_58px_-36px_rgba(255,255,255,0.12)]"><strong>Verified</strong><div className="text-3xl font-extrabold tracking-tight">{stats.verified}</div></div>
@@ -330,7 +399,7 @@ export default function DashboardPage() {
         </div>
 
         <div className="grid gap-3 rounded-[18px] border border-neutral-300 bg-white/90 p-4 shadow-[0_0_0_1px_rgba(0,0,0,0.08),0_24px_58px_-36px_rgba(0,0,0,0.25)] backdrop-blur-sm md:p-5 dark:border-neutral-700 dark:bg-neutral-900/90 dark:shadow-[0_0_0_1px_rgba(255,255,255,0.08),0_24px_58px_-36px_rgba(255,255,255,0.12)]">
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
             <div>
               <label className="mb-2 block text-xs uppercase tracking-wide text-neutral-500 dark:text-neutral-300">Filter by Status</label>
               <select className="w-full rounded-xl border border-neutral-300 bg-white/80 px-3.5 py-3 text-sm text-neutral-900 outline-none transition focus:border-neutral-900 focus:ring-2 focus:ring-black/10 dark:border-neutral-700 dark:bg-neutral-900/80 dark:text-white dark:focus:border-white dark:focus:ring-white/15" value={filters.status} onChange={(e) => setFilters({ ...filters, status: e.target.value })}>
@@ -371,25 +440,26 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        <div className="rounded-[18px] border border-neutral-300 bg-white/90 p-4 shadow-[0_0_0_1px_rgba(0,0,0,0.08),0_24px_58px_-36px_rgba(0,0,0,0.25)] backdrop-blur-sm md:p-5 dark:border-neutral-700 dark:bg-neutral-900/90 dark:shadow-[0_0_0_1px_rgba(255,255,255,0.08),0_24px_58px_-36px_rgba(255,255,255,0.12)]">
+        <div className="min-w-0 rounded-[18px] border border-neutral-300 bg-white/90 p-4 shadow-[0_0_0_1px_rgba(0,0,0,0.08),0_24px_58px_-36px_rgba(0,0,0,0.25)] backdrop-blur-sm md:p-5 dark:border-neutral-700 dark:bg-neutral-900/90 dark:shadow-[0_0_0_1px_rgba(255,255,255,0.08),0_24px_58px_-36px_rgba(255,255,255,0.12)]">
           {loading ? (
             <div className="py-2 text-sm text-neutral-500 dark:text-neutral-300">Loading orders...</div>
           ) : (
             <>
-              <div className="hidden overflow-x-auto md:block">
-                <table className="min-w-[1100px] w-full border-collapse">
-                  <thead>
-                    <tr>
-                      {['Customer', 'Platform', 'Product', 'Package', 'Qty', 'Payment', 'Primary Ref', 'Previous Ref', 'New Ref', 'Status', 'Customer Status', 'Entry Time', 'Actions'].map((head) => (
-                        <th key={head} className="border-b border-neutral-300 px-3 py-3 text-left text-[11px] uppercase tracking-[0.06em] text-neutral-500 dark:border-neutral-700 dark:text-neutral-300">{head}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {orders.map((order) => (
-                      <tr key={order.id}>
-                        <td className="border-b border-neutral-300 px-3 py-3 align-top dark:border-neutral-700">{order.customer_name}</td>
-                        <td className="border-b border-neutral-300 px-3 py-3 align-top dark:border-neutral-700">
+              <div className="hidden min-w-0 lg:block">
+                <div className="w-full max-w-full overflow-x-auto overscroll-x-contain rounded-md border border-neutral-300 bg-white/70 dark:border-neutral-700 dark:bg-neutral-900/60">
+                  <table className="w-full min-w-[1120px] text-sm xl:min-w-[1240px]">
+                    <thead className="sticky top-0 z-10 bg-neutral-100/90 backdrop-blur-sm dark:bg-neutral-900/90">
+                      <tr className="border-b border-neutral-300 dark:border-neutral-700">
+                        {['Customer', 'Platform', 'Product', 'Package', 'Qty', 'Payment', 'Primary Ref', 'Previous Ref', 'New Ref', 'Status', 'Customer Status', 'Entry Time', 'Actions'].map((head) => (
+                          <th key={head} className="h-11 px-3 text-left text-[11px] font-medium uppercase tracking-[0.06em] text-neutral-600 dark:text-neutral-300">{head}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {orders.map((order) => (
+                        <tr key={order.id} className="border-b border-neutral-200/90 transition-colors hover:bg-neutral-100/70 dark:border-neutral-800 dark:hover:bg-neutral-800/40">
+                          <td className="px-3 py-3 align-middle">{order.customer_name}</td>
+                          <td className="px-3 py-3 align-middle">
                           <div className="flex items-center gap-2">
                             {(() => {
                               const PlatformIcon = getPlatformIcon(getPlatformCode(order));
@@ -418,42 +488,44 @@ export default function DashboardPage() {
                               </span>
                             </a>
                           </div>
-                        </td>
-                        <td className="border-b border-neutral-300 px-3 py-3 align-top dark:border-neutral-700">{getOrderItemsSummary(order).productNames.join(', ') || '—'}</td>
-                        <td className="border-b border-neutral-300 px-3 py-3 align-top dark:border-neutral-700">{getOrderItemsSummary(order).packageNames.join(', ') || '—'}</td>
-                        <td className="border-b border-neutral-300 px-3 py-3 align-top dark:border-neutral-700">{getOrderItemsSummary(order).quantity || '—'}</td>
-                        <td className="border-b border-neutral-300 px-3 py-3 align-top dark:border-neutral-700"><div>{getPaymentMethodLabel(order)}</div><div className="text-xs text-neutral-500 dark:text-neutral-300">{getPaymentMediumLabel(order)}</div></td>
-                        <td className="border-b border-neutral-300 px-3 py-3 align-top dark:border-neutral-700">{getPrimaryReference(order)}</td>
-                        <td className="border-b border-neutral-300 px-3 py-3 align-top dark:border-neutral-700">{order.previous_reference_value || '—'}</td>
-                        <td className="border-b border-neutral-300 px-3 py-3 align-top dark:border-neutral-700">{order.delivered_reference || '—'}</td>
-                        <td className="border-b border-neutral-300 px-3 py-3 align-top dark:border-neutral-700"><span className={`inline-flex rounded-full border border-current px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider ${statusClass[getStatusCode(order)]}`}>{getStatusLabel(order)}</span></td>
-                        <td className="border-b border-neutral-300 px-3 py-3 align-top dark:border-neutral-700">
+                          </td>
+                          <td className="px-3 py-3 align-middle">{getOrderItemsSummary(order).productNames.join(', ') || '—'}</td>
+                          <td className="px-3 py-3 align-middle">{getOrderItemsSummary(order).packageNames.join(', ') || '—'}</td>
+                          <td className="whitespace-nowrap px-3 py-3 align-middle">{getOrderItemsSummary(order).quantity || '—'}</td>
+                          <td className="px-3 py-3 align-middle"><div>{getPaymentMethodLabel(order)}</div><div className="text-xs text-neutral-500 dark:text-neutral-300">{getPaymentMediumLabel(order)}</div></td>
+                          <td className="whitespace-nowrap px-3 py-3 align-middle">{getPrimaryReference(order)}</td>
+                          <td className="whitespace-nowrap px-3 py-3 align-middle">{order.previous_reference_value || '—'}</td>
+                          <td className="whitespace-nowrap px-3 py-3 align-middle">{order.delivered_reference || '—'}</td>
+                          <td className="px-3 py-3 align-middle"><span className={`inline-flex rounded-full border border-current px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider ${statusClass[getStatusCode(order)]}`}>{getStatusLabel(order)}</span></td>
+                          <td className="px-3 py-3 align-middle">
                           <span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider ${customerStatusClass[getCustomerStatusCode(order)] || 'bg-neutral-200 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-200'}`}>
                             {getCustomerStatusLabel(order)}
                           </span>
-                        </td>
-                        <td className="border-b border-neutral-300 px-3 py-3 align-top dark:border-neutral-700">{formatEntryTime(order.entry_time)}</td>
-                        <td className="border-b border-neutral-300 px-3 py-3 align-top dark:border-neutral-700">
+                          </td>
+                          <td className="whitespace-nowrap px-3 py-3 align-middle">{formatEntryTime(order.entry_time)}</td>
+                          <td className="px-3 py-3 align-middle">
                           {getStatusCode(order) === 'ordered' && (
-                            <button className={`inline-flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium transition hover:-translate-y-0.5 ${actionClass.verify}`} onClick={() => verifyOrder(order.id)} title="Verify">✔ Verify</button>
+                            <button className={`inline-flex whitespace-nowrap items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium transition hover:-translate-y-0.5 ${actionClass.verify}`} onClick={() => verifyOrder(order.id)} title="Verify">✔ Verify</button>
                           )}
                           {getStatusCode(order) === 'verified' && (
-                            <button className={`inline-flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium transition hover:-translate-y-0.5 ${actionClass.deliver}`} onClick={() => setDeliveryOrder(order)} title="Delivered">📦 Deliver</button>
+                            <button className={`inline-flex whitespace-nowrap items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium transition hover:-translate-y-0.5 ${actionClass.deliver}`} onClick={() => setDeliveryOrder(order)} title="Delivered">📦 Deliver</button>
                           )}
                           {getStatusCode(order) === 'completed' && <span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider ${actionClass.done}`}>Done</span>}
-                        </td>
-                      </tr>
-                    ))}
-                    {orders.length === 0 && (
-                      <tr>
-                        <td colSpan={13} className="border-b border-neutral-300 px-3 py-4 text-sm text-neutral-500 dark:border-neutral-700 dark:text-neutral-300">No orders found.</td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
+                          {getStatusCode(order) === 'declined' && <span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider ${actionClass.declined}`}>Declined</span>}
+                          </td>
+                        </tr>
+                      ))}
+                      {orders.length === 0 && (
+                        <tr>
+                          <td colSpan={13} className="px-3 py-6 text-center text-sm text-neutral-500 dark:text-neutral-300">No orders found.</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </div>
 
-              <div className="grid gap-3 md:hidden">
+              <div className="grid gap-3 lg:hidden">
                 {orders.map((order) => (
                   <div key={order.id} className="rounded-2xl border border-neutral-300 bg-white/80 p-3 dark:border-neutral-700 dark:bg-neutral-900/80">
                     <div className="mb-2 flex items-start justify-between gap-2">
@@ -508,6 +580,7 @@ export default function DashboardPage() {
                         <button className={`inline-flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium transition hover:-translate-y-0.5 ${actionClass.deliver}`} onClick={() => setDeliveryOrder(order)} title="Delivered">📦 Deliver</button>
                       )}
                       {getStatusCode(order) === 'completed' && <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${actionClass.done}`}>Done</span>}
+                      {getStatusCode(order) === 'declined' && <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${actionClass.declined}`}>Declined</span>}
                     </div>
                   </div>
                 ))}

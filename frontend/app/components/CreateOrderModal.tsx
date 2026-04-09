@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { apiFetch } from '@/lib/api';
 import { Order, Product } from '@/lib/types';
 import { ChevronDown, ChevronUp } from 'lucide-react';
@@ -92,6 +92,7 @@ export default function CreateOrderModal({ products, onClose, onCreated }: Props
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [saving, setSaving] = useState(false);
   const [isProductMenuOpen, setIsProductMenuOpen] = useState(false);
+  const productMenuRef = useRef<HTMLDivElement | null>(null);
   const [platformOptions, setPlatformOptions] = useState(defaultPlatformOptions);
   const [paymentMethodOptions, setPaymentMethodOptions] = useState(defaultPaymentMethodOptions);
   const [customerStatusOptions, setCustomerStatusOptions] = useState(defaultCustomerStatusOptions);
@@ -224,6 +225,24 @@ export default function CreateOrderModal({ products, onClose, onCreated }: Props
     };
   }, []);
 
+  useEffect(() => {
+    const handleOutside = (event: MouseEvent | TouchEvent) => {
+      const target = event.target as Node;
+      if (!productMenuRef.current) return;
+      if (!productMenuRef.current.contains(target)) {
+        setIsProductMenuOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleOutside);
+    document.addEventListener('touchstart', handleOutside);
+
+    return () => {
+      document.removeEventListener('mousedown', handleOutside);
+      document.removeEventListener('touchstart', handleOutside);
+    };
+  }, []);
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -283,7 +302,7 @@ export default function CreateOrderModal({ products, onClose, onCreated }: Props
           </button>
         </div>
 
-        <form className="grid grid-cols-1 gap-4 md:grid-cols-2" onSubmit={submit}>
+        <form className="grid grid-cols-1 gap-4 lg:grid-cols-2" onSubmit={submit}>
           <div className="relative pb-5">
             <label className="mb-2 block text-xs uppercase tracking-wide text-neutral-500 dark:text-neutral-300">Customer Name</label>
             <input className="w-full rounded-xl border border-neutral-300 bg-white/80 px-3.5 py-3 text-sm text-neutral-900 outline-none transition focus:border-neutral-900 focus:ring-2 focus:ring-black/10 dark:border-neutral-700 dark:bg-neutral-900/80 dark:text-white dark:focus:border-white dark:focus:ring-white/15" required value={form.customer_name} onChange={(e) => {
@@ -312,7 +331,7 @@ export default function CreateOrderModal({ products, onClose, onCreated }: Props
             </select>
           </div>
 
-          <div className="relative pb-5">
+          <div className="relative pb-5" ref={productMenuRef}>
             <label className="mb-2 block text-xs uppercase tracking-wide text-neutral-500 dark:text-neutral-300">Product Name</label>
             <div className="relative">
               <button

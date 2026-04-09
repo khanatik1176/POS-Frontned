@@ -36,7 +36,7 @@ export type Order = {
   payment_medium_detail?: LookupDetail;
   reference_number: number | string;
   reference_number_value?: string;
-  status: 'ordered' | 'verified' | 'completed' | number;
+  status: 'ordered' | 'verified' | 'completed' | 'declined' | number;
   status_detail?: LookupDetail;
   entry_time: string;
   customer_status: 'new' | 'renewal' | number;

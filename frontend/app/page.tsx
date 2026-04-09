@@ -13,7 +13,7 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    const token = localStorage.getItem('accessToken');
+    const token = localStorage.getItem('accessToken') || localStorage.getItem('token');
     const theme = localStorage.getItem('theme') || 'light';
     document.documentElement.classList.toggle('dark', theme === 'dark');
     if (token) {
@@ -45,7 +45,7 @@ export default function LoginPage() {
   return (
     <div className="relative grid min-h-screen place-items-center bg-neutral-50 px-3 py-5 text-neutral-900 sm:px-4 sm:py-6 dark:bg-neutral-950 dark:text-white">
       <div className="pointer-events-none fixed inset-0 z-0 opacity-[0.04] [background-image:linear-gradient(#d7d7d7_1px,transparent_1px),linear-gradient(90deg,#d7d7d7_1px,transparent_1px)] [background-size:40px_40px] dark:[background-image:linear-gradient(#2f2f2f_1px,transparent_1px),linear-gradient(90deg,#2f2f2f_1px,transparent_1px)]" />
-      <div className="relative z-10 w-full max-w-[460px] rounded-[18px] border border-neutral-300 bg-white/90 p-4 shadow-[0_0_0_1px_rgba(0,0,0,0.08),0_24px_58px_-36px_rgba(0,0,0,0.25)] backdrop-blur-sm md:p-5 dark:border-neutral-700 dark:bg-neutral-900/90 dark:shadow-[0_0_0_1px_rgba(255,255,255,0.08),0_24px_58px_-36px_rgba(255,255,255,0.12)]">
+      <div className="relative z-10 w-full max-w-[460px] rounded-[18px] border border-neutral-300 bg-white/90 p-4 shadow-[0_0_0_1px_rgba(0,0,0,0.08),0_24px_58px_-36px_rgba(0,0,0,0.25)] backdrop-blur-sm sm:p-5 dark:border-neutral-700 dark:bg-neutral-900/90 dark:shadow-[0_0_0_1px_rgba(255,255,255,0.08),0_24px_58px_-36px_rgba(255,255,255,0.12)]">
         <div className="mb-3 flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
           <div>
             <h1 className="mb-1 text-2xl font-semibold tracking-tight">Order Control</h1>
