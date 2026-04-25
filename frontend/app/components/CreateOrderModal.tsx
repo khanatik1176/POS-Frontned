@@ -23,7 +23,16 @@ type PlatformLookupItem = {
   title?: string;
 };
 
-type PlatformLookupResponse = PlatformLookupItem[] | { results?: PlatformLookupItem[]; data?: PlatformLookupItem[]; items?: PlatformLookupItem[] };
+type PlatformLookupResponse = PlatformLookupItem[] | {
+  results?: PlatformLookupItem[];
+  data?: PlatformLookupItem[];
+  items?: PlatformLookupItem[];
+  platform_types?: PlatformLookupItem[];
+  payment_methods?: PlatformLookupItem[];
+  payment_mediums?: PlatformLookupItem[];
+  payment_media?: PlatformLookupItem[];
+  customer_statuses?: PlatformLookupItem[];
+};
 
 type FieldErrors = Partial<Record<
   'customer_name' | 'url' | 'products' | 'package_type' | 'quantity' | 'reference_number' | 'previous_reference',
@@ -61,8 +70,33 @@ const defaultPaymentMediumOptions = [
 
 
 
-const normalizePlatformOptions = (payload: PlatformLookupResponse) => {
-  const raw = Array.isArray(payload) ? payload : payload.results || payload.data || payload.items || [];
+const extractLookupItems = (payload: PlatformLookupResponse, preferredKeys: string[] = []) => {
+  if (Array.isArray(payload)) return payload;
+
+  const keyOrder = [
+    ...preferredKeys,
+    'results',
+    'data',
+    'items',
+    'platform_types',
+    'payment_methods',
+    'payment_mediums',
+    'payment_media',
+    'customer_statuses',
+  ];
+
+  for (const key of keyOrder) {
+    const candidate = (payload as Record<string, unknown>)[key];
+    if (Array.isArray(candidate)) {
+      return candidate as PlatformLookupItem[];
+    }
+  }
+
+  return [];
+};
+
+const normalizePlatformOptions = (payload: PlatformLookupResponse, preferredKeys: string[] = []) => {
+  const raw = extractLookupItems(payload, preferredKeys);
 
   return raw
     .map((item) => {
@@ -72,6 +106,25 @@ const normalizePlatformOptions = (payload: PlatformLookupResponse) => {
       return { value: String(value), label: String(label) };
     })
     .filter((item): item is { value: string; label: string } => item !== null);
+};
+
+const fetchLookupWithFallback = async (
+  endpoints: string[],
+  preferredKeys: string[] = [],
+): Promise<{ value: string; label: string }[]> => {
+  for (const endpoint of endpoints) {
+    try {
+      const payload = await apiFetch<PlatformLookupResponse>(endpoint);
+      const options = normalizePlatformOptions(payload, preferredKeys);
+      if (options.length > 0) {
+        return options;
+      }
+    } catch {
+      // Try next endpoint candidate.
+    }
+  }
+
+  return [];
 };
 
 export default function CreateOrderModal({ products, onClose, onCreated }: Props) {
@@ -165,56 +218,49 @@ export default function CreateOrderModal({ products, onClose, onCreated }: Props
     let isMounted = true;
 
     const loadLookups = async () => {
-      try {
-        const [platformData, paymentMethodData, customerStatusData, paymentMediumData] = await Promise.all([
-          apiFetch<PlatformLookupResponse>('/lookups/platform-types/'),
-          apiFetch<PlatformLookupResponse>('/lookups/payment-methods/'),
-          apiFetch<PlatformLookupResponse>('/lookups/customer-statuses/'),
-          apiFetch<PlatformLookupResponse>('/lookups/payment-mediums/'),
-        ]);
-        if (!isMounted) return;
+      const [platformOptionsFromApi, paymentMethodOptionsFromApi, customerStatusOptionsFromApi, paymentMediumOptionsFromApi] = await Promise.all([
+        fetchLookupWithFallback(['/lookups/platform-types/', '/platform-types/', '/lookups/'], ['platform_types']),
+        fetchLookupWithFallback(['/lookups/payment-methods/', '/payment-methods/', '/lookups/'], ['payment_methods']),
+        fetchLookupWithFallback(['/lookups/customer-statuses/', '/customer-statuses/', '/lookups/'], ['customer_statuses']),
+        fetchLookupWithFallback(['/lookups/payment-mediums/', '/payment-mediums/', '/lookups/'], ['payment_mediums', 'payment_media']),
+      ]);
 
-        const nextPlatformOptions = normalizePlatformOptions(platformData);
-        if (nextPlatformOptions.length > 0) {
-          setPlatformOptions(nextPlatformOptions);
-          setForm((prev) => (
-            nextPlatformOptions.some((option) => option.value === prev.platform_type)
-              ? prev
-              : { ...prev, platform_type: nextPlatformOptions[0].value }
-          ));
-        }
+      if (!isMounted) return;
 
-        const nextPaymentMethodOptions = normalizePlatformOptions(paymentMethodData);
-        if (nextPaymentMethodOptions.length > 0) {
-          setPaymentMethodOptions(nextPaymentMethodOptions);
-          setForm((prev) => (
-            nextPaymentMethodOptions.some((option) => option.value === prev.payment_method)
-              ? prev
-              : { ...prev, payment_method: nextPaymentMethodOptions[0].value }
-          ));
-        }
+      if (platformOptionsFromApi.length > 0) {
+        setPlatformOptions(platformOptionsFromApi);
+        setForm((prev) => (
+          platformOptionsFromApi.some((option) => option.value === prev.platform_type)
+            ? prev
+            : { ...prev, platform_type: platformOptionsFromApi[0].value }
+        ));
+      }
 
-        const nextCustomerStatusOptions = normalizePlatformOptions(customerStatusData);
-        if (nextCustomerStatusOptions.length > 0) {
-          setCustomerStatusOptions(nextCustomerStatusOptions);
-          setForm((prev) => (
-            nextCustomerStatusOptions.some((option) => option.value === prev.customer_status)
-              ? prev
-              : { ...prev, customer_status: nextCustomerStatusOptions[0].value }
-          ));
-        }
+      if (paymentMethodOptionsFromApi.length > 0) {
+        setPaymentMethodOptions(paymentMethodOptionsFromApi);
+        setForm((prev) => (
+          paymentMethodOptionsFromApi.some((option) => option.value === prev.payment_method)
+            ? prev
+            : { ...prev, payment_method: paymentMethodOptionsFromApi[0].value }
+        ));
+      }
 
-        const nextPaymentMediumOptions = normalizePlatformOptions(paymentMediumData);
-        if (nextPaymentMediumOptions.length > 0) {
-          setPaymentMediumOptions(nextPaymentMediumOptions);
-          setForm((prev) => (
-            nextPaymentMediumOptions.some((option) => option.value === prev.payment_medium)
-              ? prev
-              : { ...prev, payment_medium: nextPaymentMediumOptions[0].value }
-          ));
-        }
-      } catch {
-        // Keep default lookup options if API fails.
+      if (customerStatusOptionsFromApi.length > 0) {
+        setCustomerStatusOptions(customerStatusOptionsFromApi);
+        setForm((prev) => (
+          customerStatusOptionsFromApi.some((option) => option.value === prev.customer_status)
+            ? prev
+            : { ...prev, customer_status: customerStatusOptionsFromApi[0].value }
+        ));
+      }
+
+      if (paymentMediumOptionsFromApi.length > 0) {
+        setPaymentMediumOptions(paymentMediumOptionsFromApi);
+        setForm((prev) => (
+          paymentMediumOptionsFromApi.some((option) => option.value === prev.payment_medium)
+            ? prev
+            : { ...prev, payment_medium: paymentMediumOptionsFromApi[0].value }
+        ));
       }
     };
 

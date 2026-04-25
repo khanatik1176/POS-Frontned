@@ -176,6 +176,67 @@ const sortByEntryTime = (list: Order[], ordering: string) => {
   return sorted;
 };
 
+const extractArrayFromPayload = <T,>(payload: T[] | Record<string, unknown>, preferredKeys: string[] = []) => {
+  if (Array.isArray(payload)) return payload;
+
+  const keyOrder = [...preferredKeys, 'results', 'data', 'items'];
+  for (const key of keyOrder) {
+    const candidate = payload[key];
+    if (Array.isArray(candidate)) return candidate;
+  }
+
+  return [];
+};
+
+const normalizeProductsPayload = (payload: Product[] | Record<string, unknown>): Product[] => {
+  const rawProducts = extractArrayFromPayload(payload, ['products']);
+
+  return rawProducts
+    .map((entry) => {
+      const product = entry as Record<string, unknown>;
+      const idValue = product.id ?? product.value;
+      const nameValue = product.name ?? product.product_name ?? product.title ?? product.label;
+      if (idValue === undefined || nameValue === undefined || nameValue === null) {
+        return null;
+      }
+
+      const rawPackagesSource = product.packages
+        ?? product.package_types
+        ?? product.packageTypes
+        ?? product.package_type;
+      const rawPackages = Array.isArray(rawPackagesSource) ? rawPackagesSource : [];
+
+      const packages = rawPackages
+        .map((item) => {
+          const pack = item as Record<string, unknown>;
+          const packIdValue = pack.id ?? pack.value;
+          const packNameValue = pack.name ?? pack.package_name ?? pack.title ?? pack.label;
+          if (packIdValue === undefined || packNameValue === undefined || packNameValue === null) {
+            return null;
+          }
+
+          const id = Number(packIdValue);
+          if (Number.isNaN(id)) return null;
+
+          return {
+            id,
+            name: String(packNameValue),
+          };
+        })
+        .filter((item): item is { id: number; name: string } => item !== null);
+
+      const id = Number(idValue);
+      if (Number.isNaN(id)) return null;
+
+      return {
+        id,
+        name: String(nameValue),
+        packages,
+      };
+    })
+    .filter((item): item is Product => item !== null);
+};
+
 const applyClientFilters = (list: Order[], nextFilters: typeof initialFilters) => {
   const searchValue = nextFilters.search.trim().toLowerCase();
 
@@ -268,11 +329,11 @@ export default function DashboardPage() {
     try {
       setLoading(true);
       const [productData, orderData] = await Promise.all([
-        apiFetch<Product[] | { results?: Product[] }>('/products/'),
+        apiFetch<Product[] | { results?: Product[] } | Record<string, unknown>>('/products/'),
         fetchOrders(activeFilters),
       ]);
       const fetchedOrders = Array.isArray(orderData) ? orderData : (orderData.results ?? []);
-      setProducts(Array.isArray(productData) ? productData : (productData.results ?? []));
+      setProducts(normalizeProductsPayload(productData));
       setOrders(applyClientFilters(fetchedOrders, activeFilters));
     } finally {
       setLoading(false);
