@@ -302,6 +302,8 @@ export default function DashboardPage() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
+  const [verifyingOrderId, setVerifyingOrderId] = useState<number | null>(null);
+  const [actionError, setActionError] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [deliveryOrder, setDeliveryOrder] = useState<Order | null>(null);
   const [filters, setFilters] = useState(initialFilters);
@@ -408,11 +410,59 @@ export default function DashboardPage() {
   }, [refreshOrders]);
 
   const verifyOrder = async (orderId: number) => {
-    const updated = await apiFetch<Order>(`/orders/${orderId}/verify/`, {
-      method: 'POST',
-      body: JSON.stringify({}),
-    });
-    setOrders((prev) => prev.map((order) => (order.id === orderId ? updated : order)));
+    if (verifyingOrderId === orderId) return;
+
+    setVerifyingOrderId(orderId);
+    setActionError('');
+
+    const verifyEndpoints = [`/orders/${orderId}/verify/`, `/orders/${orderId}/verify`];
+    const patchPayloads = [{ status: '2' }, { status: 2 }, { status: 'verified' }];
+
+    try {
+      let lastError: unknown;
+
+      for (const endpoint of verifyEndpoints) {
+        try {
+          const updated = await apiFetch<Order | Record<string, unknown>>(endpoint, {
+            method: 'POST',
+            body: JSON.stringify({}),
+          });
+
+          if (updated && typeof updated === 'object' && 'id' in updated) {
+            setOrders((prev) => prev.map((order) => (order.id === orderId ? (updated as Order) : order)));
+          } else {
+            await refreshOrders(latestFiltersRef.current);
+          }
+          return;
+        } catch (err) {
+          lastError = err;
+        }
+      }
+
+      for (const payload of patchPayloads) {
+        try {
+          const updated = await apiFetch<Order | Record<string, unknown>>(`/orders/${orderId}/`, {
+            method: 'PATCH',
+            body: JSON.stringify(payload),
+          });
+
+          if (updated && typeof updated === 'object' && 'id' in updated) {
+            setOrders((prev) => prev.map((order) => (order.id === orderId ? (updated as Order) : order)));
+          } else {
+            await refreshOrders(latestFiltersRef.current);
+          }
+          return;
+        } catch (err) {
+          lastError = err;
+        }
+      }
+
+      throw lastError instanceof Error ? lastError : new Error('Failed to verify order');
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Failed to verify order');
+    } finally {
+      setVerifyingOrderId(null);
+    }
   };
 
   const logout = () => {
@@ -502,6 +552,7 @@ export default function DashboardPage() {
         </div>
 
         <div className="min-w-0 rounded-[18px] border border-neutral-300 bg-white/90 p-4 shadow-[0_0_0_1px_rgba(0,0,0,0.08),0_24px_58px_-36px_rgba(0,0,0,0.25)] backdrop-blur-sm md:p-5 dark:border-neutral-700 dark:bg-neutral-900/90 dark:shadow-[0_0_0_1px_rgba(255,255,255,0.08),0_24px_58px_-36px_rgba(255,255,255,0.12)]">
+          {actionError && <div className="mb-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-800/70 dark:bg-red-950/40 dark:text-red-300">{actionError}</div>}
           {loading ? (
             <div className="py-2 text-sm text-neutral-500 dark:text-neutral-300">Loading orders...</div>
           ) : (
@@ -566,7 +617,7 @@ export default function DashboardPage() {
                           <td className="whitespace-nowrap px-3 py-3 align-middle">{formatEntryTime(order.entry_time)}</td>
                           <td className="px-3 py-3 align-middle">
                           {getStatusCode(order) === 'ordered' && (
-                            <button className={`inline-flex whitespace-nowrap items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium transition hover:-translate-y-0.5 ${actionClass.verify}`} onClick={() => verifyOrder(order.id)} title="Verify">✔ Verify</button>
+                            <button className={`inline-flex whitespace-nowrap items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-70 ${actionClass.verify}`} onClick={() => verifyOrder(order.id)} title="Verify" disabled={verifyingOrderId === order.id}>{verifyingOrderId === order.id ? 'Verifying...' : '✔ Verify'}</button>
                           )}
                           {getStatusCode(order) === 'verified' && (
                             <button className={`inline-flex whitespace-nowrap items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium transition hover:-translate-y-0.5 ${actionClass.deliver}`} onClick={() => setDeliveryOrder(order)} title="Delivered">📦 Deliver</button>
@@ -635,7 +686,7 @@ export default function DashboardPage() {
                     <p className="mt-2 text-xs text-neutral-500 dark:text-neutral-300">{formatEntryTime(order.entry_time)}</p>
                     <div className="mt-3 flex flex-wrap gap-2">
                       {getStatusCode(order) === 'ordered' && (
-                        <button className={`inline-flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium transition hover:-translate-y-0.5 ${actionClass.verify}`} onClick={() => verifyOrder(order.id)} title="Verify">✔ Verify</button>
+                        <button className={`inline-flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-70 ${actionClass.verify}`} onClick={() => verifyOrder(order.id)} title="Verify" disabled={verifyingOrderId === order.id}>{verifyingOrderId === order.id ? 'Verifying...' : '✔ Verify'}</button>
                       )}
                       {getStatusCode(order) === 'verified' && (
                         <button className={`inline-flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium transition hover:-translate-y-0.5 ${actionClass.deliver}`} onClick={() => setDeliveryOrder(order)} title="Delivered">📦 Deliver</button>

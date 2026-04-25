@@ -251,6 +251,19 @@ const normalizePlatformOptions = (payload: PlatformLookupResponse, preferredKeys
     .filter((item): item is { value: string; label: string } => item !== null);
 };
 
+const isRenewalCustomerStatus = (
+  selectedStatus: string,
+  options: Array<{ value: string; label: string }>,
+) => {
+  const normalizedStatus = selectedStatus.trim().toLowerCase();
+  if (normalizedStatus === 'renewal' || normalizedStatus.includes('renew')) return true;
+
+  const matchedOption = options.find((option) => String(option.value) === String(selectedStatus));
+  if (!matchedOption) return false;
+
+  return matchedOption.label.trim().toLowerCase().includes('renew');
+};
+
 const fetchLookupWithFallback = async (
   endpoints: string[],
   preferredKeys: string[] = [],
@@ -296,6 +309,10 @@ export default function CreateOrderModal({ products, onClose, onCreated }: Props
   const [paymentMethodOptions, setPaymentMethodOptions] = useState(defaultPaymentMethodOptions);
   const [customerStatusOptions, setCustomerStatusOptions] = useState(defaultCustomerStatusOptions);
   const [paymentMediumOptions, setPaymentMediumOptions] = useState(defaultPaymentMediumOptions);
+  const shouldShowPreviousReference = useMemo(
+    () => isRenewalCustomerStatus(form.customer_status, customerStatusOptions),
+    [form.customer_status, customerStatusOptions],
+  );
 
   const selectedProducts = useMemo(
     () => availableProducts.filter((item) => form.products.includes(item.name)),
@@ -358,7 +375,7 @@ export default function CreateOrderModal({ products, onClose, onCreated }: Props
     if (!Number(form.quantity) || Number(form.quantity) < 1) nextErrors.quantity = 'Quantity must be at least 1.';
     if (!form.reference_number.trim()) nextErrors.reference_number = 'Reference number is required.';
 
-    if (form.customer_status === 'renewal' && !form.previous_reference.trim()) {
+    if (shouldShowPreviousReference && !form.previous_reference.trim()) {
       nextErrors.previous_reference = 'Previous reference is required for renewal.';
     }
 
@@ -772,7 +789,7 @@ export default function CreateOrderModal({ products, onClose, onCreated }: Props
             </select>
           </div>
 
-          {form.customer_status === 'renewal' && (
+          {shouldShowPreviousReference && (
             <div className="relative pb-5">
               <ReferenceAutocomplete
                 label="Previous Reference"
