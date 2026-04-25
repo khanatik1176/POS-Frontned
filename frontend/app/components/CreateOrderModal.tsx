@@ -12,6 +12,8 @@ interface Props {
   onCreated: (order: Order) => void;
 }
 
+type PackageOption = { id: number; name: string };
+
 type PlatformLookupItem = {
   id?: number | string;
   value?: string | number;
@@ -67,6 +69,87 @@ const defaultPaymentMediumOptions = [
   { value: 'mobile_banking', label: 'Mobile Banking' },
   { value: 'pos', label: 'POS' },
 ];
+
+const extractArrayFromPayload = <T,>(payload: T[] | Record<string, unknown>, preferredKeys: string[] = []) => {
+  if (Array.isArray(payload)) return payload;
+
+  const keyOrder = [...preferredKeys, 'results', 'data', 'items'];
+  for (const key of keyOrder) {
+    const candidate = payload[key];
+    if (Array.isArray(candidate)) return candidate;
+  }
+
+  return [];
+};
+
+const normalizeProductsPayload = (payload: Product[] | Record<string, unknown>): Product[] => {
+  const rawProducts = extractArrayFromPayload(payload, ['products']);
+
+  return rawProducts
+    .map((entry) => {
+      const product = entry as Record<string, unknown>;
+      const idValue = product.id ?? product.value;
+      const nameValue = product.name ?? product.product_name ?? product.title ?? product.label;
+      if (idValue === undefined || nameValue === undefined || nameValue === null) {
+        return null;
+      }
+
+      const rawPackagesSource = product.packages
+        ?? product.package_types
+        ?? product.packageTypes
+        ?? product.package_type;
+      const rawPackages = Array.isArray(rawPackagesSource) ? rawPackagesSource : [];
+
+      const packages = rawPackages
+        .map((item) => {
+          const pack = item as Record<string, unknown>;
+          const packIdValue = pack.id ?? pack.value;
+          const packNameValue = pack.name ?? pack.package_name ?? pack.title ?? pack.label;
+          if (packIdValue === undefined || packNameValue === undefined || packNameValue === null) {
+            return null;
+          }
+
+          const id = Number(packIdValue);
+          if (Number.isNaN(id)) return null;
+
+          return {
+            id,
+            name: String(packNameValue),
+          };
+        })
+        .filter((item): item is PackageOption => item !== null);
+
+      const id = Number(idValue);
+      if (Number.isNaN(id)) return null;
+
+      return {
+        id,
+        name: String(nameValue),
+        packages,
+      };
+    })
+    .filter((item): item is Product => item !== null);
+};
+
+const normalizePackagePayload = (payload: Record<string, unknown> | Array<unknown>): PackageOption[] => {
+  const rawPackages = extractArrayFromPayload(payload, ['package_types', 'packages']);
+
+  return rawPackages
+    .map((entry) => {
+      const pack = entry as Record<string, unknown>;
+      const idValue = pack.id ?? pack.value;
+      const nameValue = pack.name ?? pack.package_name ?? pack.title ?? pack.label;
+      if (idValue === undefined || nameValue === undefined || nameValue === null) {
+        return null;
+      }
+
+      const id = Number(idValue);
+      if (Number.isNaN(id)) return null;
+
+      return { id, name: String(nameValue) };
+    })
+    .filter((item): item is PackageOption => item !== null);
+};
 
 
 
@@ -146,17 +229,19 @@ export default function CreateOrderModal({ products, onClose, onCreated }: Props
   const [saving, setSaving] = useState(false);
   const [isProductMenuOpen, setIsProductMenuOpen] = useState(false);
   const productMenuRef = useRef<HTMLDivElement | null>(null);
+  const [availableProducts, setAvailableProducts] = useState<Product[]>(products);
+  const [apiPackages, setApiPackages] = useState<PackageOption[]>([]);
   const [platformOptions, setPlatformOptions] = useState(defaultPlatformOptions);
   const [paymentMethodOptions, setPaymentMethodOptions] = useState(defaultPaymentMethodOptions);
   const [customerStatusOptions, setCustomerStatusOptions] = useState(defaultCustomerStatusOptions);
   const [paymentMediumOptions, setPaymentMediumOptions] = useState(defaultPaymentMediumOptions);
 
   const selectedProducts = useMemo(
-    () => products.filter((item) => form.products.includes(item.name)),
-    [form.products, products],
+    () => availableProducts.filter((item) => form.products.includes(item.name)),
+    [form.products, availableProducts],
   );
 
-  const packages = useMemo(() => {
+  const mergedPackages = useMemo(() => {
     const mergedPackages = new Map<number, { id: number; name: string }>();
     selectedProducts.forEach((product) => {
       product.packages.forEach((pack) => {
@@ -167,6 +252,11 @@ export default function CreateOrderModal({ products, onClose, onCreated }: Props
     });
     return Array.from(mergedPackages.values());
   }, [selectedProducts]);
+
+  const packages = useMemo(() => {
+    if (apiPackages.length > 0) return apiPackages;
+    return mergedPackages;
+  }, [apiPackages, mergedPackages]);
 
   const toggleProduct = (productName: string) => {
     setForm((prev) => {
@@ -213,6 +303,10 @@ export default function CreateOrderModal({ products, onClose, onCreated }: Props
 
     return nextErrors;
   };
+
+  useEffect(() => {
+    setAvailableProducts(products);
+  }, [products]);
 
   useEffect(() => {
     let isMounted = true;
@@ -270,6 +364,82 @@ export default function CreateOrderModal({ products, onClose, onCreated }: Props
       isMounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadProducts = async () => {
+      const endpoints = ['/products/', '/product-names/', '/lookups/products/'];
+      for (const endpoint of endpoints) {
+        try {
+          const payload = await apiFetch<Product[] | Record<string, unknown>>(endpoint);
+          const normalized = normalizeProductsPayload(payload);
+          if (!isMounted) return;
+          if (normalized.length > 0) {
+            setAvailableProducts(normalized);
+            return;
+          }
+        } catch {
+          // Try next endpoint.
+        }
+      }
+    };
+
+    loadProducts();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadPackages = async () => {
+      if (selectedProducts.length === 0) {
+        setApiPackages([]);
+        return;
+      }
+
+      const packageMap = new Map<number, PackageOption>();
+      const fallbackSources = [
+        (productId: number) => `/package-types/?product=${productId}`,
+        (productId: number) => `/packages/?product=${productId}`,
+        (productId: number) => `/product-packages/?product=${productId}`,
+      ];
+
+      for (const product of selectedProducts) {
+        let loadedForProduct = false;
+
+        for (const makePath of fallbackSources) {
+          try {
+            const payload = await apiFetch<Record<string, unknown> | Array<unknown>>(makePath(product.id));
+            const normalized = normalizePackagePayload(payload);
+            if (normalized.length > 0) {
+              normalized.forEach((pack) => packageMap.set(pack.id, pack));
+              loadedForProduct = true;
+              break;
+            }
+          } catch {
+            // Try next package endpoint.
+          }
+        }
+
+        if (!loadedForProduct) {
+          product.packages.forEach((pack) => packageMap.set(pack.id, pack));
+        }
+      }
+
+      if (!isMounted) return;
+      setApiPackages(Array.from(packageMap.values()));
+    };
+
+    loadPackages();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [selectedProducts]);
 
   useEffect(() => {
     const handleOutside = (event: MouseEvent | TouchEvent) => {
@@ -395,7 +565,7 @@ export default function CreateOrderModal({ products, onClose, onCreated }: Props
 
               {isProductMenuOpen && (
                 <div className="absolute z-20 mt-2 max-h-56 w-full overflow-auto rounded-xl border border-neutral-300 bg-white p-2 shadow-lg dark:border-neutral-700 dark:bg-neutral-900">
-                  {products.map((product) => {
+                  {availableProducts.map((product) => {
                     const checked = form.products.includes(product.name);
                     return (
                       <label key={product.id} className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-2 text-sm hover:bg-neutral-100 dark:hover:bg-neutral-800">
