@@ -167,10 +167,10 @@ export default function CreateOrderModal({ products, onClose, onCreated }: Props
     const loadLookups = async () => {
       try {
         const [platformData, paymentMethodData, customerStatusData, paymentMediumData] = await Promise.all([
-          apiFetch<PlatformLookupResponse>('http://localhost:8000/api/lookups/platform-types/'),
-          apiFetch<PlatformLookupResponse>('http://localhost:8000/api/lookups/payment-methods/'),
-          apiFetch<PlatformLookupResponse>('http://localhost:8000/api/lookups/customer-statuses/'),
-          apiFetch<PlatformLookupResponse>('http://localhost:8000/api/lookups/payment-mediums/'),
+          apiFetch<PlatformLookupResponse>('/lookups/platform-types/'),
+          apiFetch<PlatformLookupResponse>('/lookups/payment-methods/'),
+          apiFetch<PlatformLookupResponse>('/lookups/customer-statuses/'),
+          apiFetch<PlatformLookupResponse>('/lookups/payment-mediums/'),
         ]);
         if (!isMounted) return;
 

@@ -268,7 +268,7 @@ export default function DashboardPage() {
     try {
       setLoading(true);
       const [productData, orderData] = await Promise.all([
-        apiFetch<Product[] | { results?: Product[] }>('http://127.0.0.1:8000/api/products/'),
+        apiFetch<Product[] | { results?: Product[] }>('/products/'),
         fetchOrders(activeFilters),
       ]);
       const fetchedOrders = Array.isArray(orderData) ? orderData : (orderData.results ?? []);
