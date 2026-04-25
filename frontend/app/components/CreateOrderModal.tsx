@@ -13,6 +13,7 @@ interface Props {
 }
 
 type PackageOption = { id: number; name: string };
+type LocalProduct = Product & { platformKeys: string[] };
 
 type PlatformLookupItem = {
   id?: number | string;
@@ -70,6 +71,64 @@ const defaultPaymentMediumOptions = [
   { value: 'pos', label: 'POS' },
 ];
 
+const normalizePlatformKey = (value: unknown): string | null => {
+  if (typeof value === 'string' && value.trim()) return value.trim().toLowerCase();
+  if (typeof value === 'number') return String(value);
+  return null;
+};
+
+const getProductPlatformKeys = (product: Record<string, unknown>): string[] => {
+  const keys = new Set<string>();
+
+  const directCandidates = [
+    product.platform_type,
+    product.platform,
+    product.platform_code,
+    product.platform_slug,
+    product.platform_name,
+  ];
+
+  directCandidates.forEach((candidate) => {
+    const normalized = normalizePlatformKey(candidate);
+    if (normalized) keys.add(normalized);
+  });
+
+  const listCandidates = [product.platforms, product.platform_types];
+  listCandidates.forEach((candidate) => {
+    if (!Array.isArray(candidate)) return;
+    candidate.forEach((entry) => {
+      if (typeof entry === 'string' || typeof entry === 'number') {
+        const normalized = normalizePlatformKey(entry);
+        if (normalized) keys.add(normalized);
+        return;
+      }
+
+      if (entry && typeof entry === 'object') {
+        const typedEntry = entry as Record<string, unknown>;
+        const nestedCandidates = [typedEntry.code, typedEntry.slug, typedEntry.value, typedEntry.id, typedEntry.name];
+        nestedCandidates.forEach((nested) => {
+          const normalized = normalizePlatformKey(nested);
+          if (normalized) keys.add(normalized);
+        });
+      }
+    });
+  });
+
+  return Array.from(keys);
+};
+
+const filterProductsByPlatform = (list: LocalProduct[], platformType: string) => {
+  const normalizedPlatform = normalizePlatformKey(platformType);
+  if (!normalizedPlatform) return list;
+
+  const withPlatformMetadata = list.filter((product) => (product.platformKeys || []).length > 0);
+  if (withPlatformMetadata.length === 0) {
+    return list;
+  }
+
+  return list.filter((product) => (product.platformKeys || []).includes(normalizedPlatform));
+};
+
 const extractArrayFromPayload = <T,>(payload: T[] | Record<string, unknown>, preferredKeys: string[] = []) => {
   if (Array.isArray(payload)) return payload;
 
@@ -82,7 +141,7 @@ const extractArrayFromPayload = <T,>(payload: T[] | Record<string, unknown>, pre
   return [];
 };
 
-const normalizeProductsPayload = (payload: Product[] | Record<string, unknown>): Product[] => {
+const normalizeProductsPayload = (payload: Product[] | Record<string, unknown>): LocalProduct[] => {
   const rawProducts = extractArrayFromPayload(payload, ['products']);
 
   return rawProducts
@@ -126,9 +185,10 @@ const normalizeProductsPayload = (payload: Product[] | Record<string, unknown>):
         id,
         name: String(nameValue),
         packages,
+        platformKeys: getProductPlatformKeys(product),
       };
     })
-    .filter((item): item is Product => item !== null);
+    .filter((item): item is LocalProduct => item !== null);
 };
 
 const normalizePackagePayload = (payload: Record<string, unknown> | Array<unknown>): PackageOption[] => {
@@ -229,7 +289,8 @@ export default function CreateOrderModal({ products, onClose, onCreated }: Props
   const [saving, setSaving] = useState(false);
   const [isProductMenuOpen, setIsProductMenuOpen] = useState(false);
   const productMenuRef = useRef<HTMLDivElement | null>(null);
-  const [availableProducts, setAvailableProducts] = useState<Product[]>(products);
+  const [allProducts, setAllProducts] = useState<LocalProduct[]>([]);
+  const [availableProducts, setAvailableProducts] = useState<LocalProduct[]>([]);
   const [apiPackages, setApiPackages] = useState<PackageOption[]>([]);
   const [platformOptions, setPlatformOptions] = useState(defaultPlatformOptions);
   const [paymentMethodOptions, setPaymentMethodOptions] = useState(defaultPaymentMethodOptions);
@@ -305,8 +366,10 @@ export default function CreateOrderModal({ products, onClose, onCreated }: Props
   };
 
   useEffect(() => {
-    setAvailableProducts(products);
-  }, [products]);
+    const normalizedFromProps: LocalProduct[] = products.map((product) => ({ ...product, platformKeys: [] }));
+    setAllProducts(normalizedFromProps);
+    setAvailableProducts(filterProductsByPlatform(normalizedFromProps, form.platform_type));
+  }, [products, form.platform_type]);
 
   useEffect(() => {
     let isMounted = true;
@@ -376,7 +439,8 @@ export default function CreateOrderModal({ products, onClose, onCreated }: Props
           const normalized = normalizeProductsPayload(payload);
           if (!isMounted) return;
           if (normalized.length > 0) {
-            setAvailableProducts(normalized);
+            setAllProducts(normalized);
+            setAvailableProducts(filterProductsByPlatform(normalized, form.platform_type));
             return;
           }
         } catch {
@@ -390,7 +454,45 @@ export default function CreateOrderModal({ products, onClose, onCreated }: Props
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [form.platform_type]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadProductsByPlatform = async () => {
+      const encodedPlatform = encodeURIComponent(form.platform_type);
+      const endpoints = [
+        `/products/?platform_type=${encodedPlatform}`,
+        `/products/?platform=${encodedPlatform}`,
+        `/product-names/?platform_type=${encodedPlatform}`,
+        `/lookups/products/?platform_type=${encodedPlatform}`,
+      ];
+
+      for (const endpoint of endpoints) {
+        try {
+          const payload = await apiFetch<Product[] | Record<string, unknown>>(endpoint);
+          const normalized = normalizeProductsPayload(payload);
+          if (!isMounted) return;
+
+          if (normalized.length > 0) {
+            setAvailableProducts(filterProductsByPlatform(normalized, form.platform_type));
+            return;
+          }
+        } catch {
+          // Try next endpoint.
+        }
+      }
+
+      if (!isMounted) return;
+      setAvailableProducts(filterProductsByPlatform(allProducts, form.platform_type));
+    };
+
+    loadProductsByPlatform();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [form.platform_type, allProducts]);
 
   useEffect(() => {
     let isMounted = true;
@@ -410,13 +512,18 @@ export default function CreateOrderModal({ products, onClose, onCreated }: Props
 
       for (const product of selectedProducts) {
         let loadedForProduct = false;
+        const allowedPackageIds = new Set(product.packages.map((pack) => pack.id));
 
         for (const makePath of fallbackSources) {
           try {
             const payload = await apiFetch<Record<string, unknown> | Array<unknown>>(makePath(product.id));
             const normalized = normalizePackagePayload(payload);
-            if (normalized.length > 0) {
-              normalized.forEach((pack) => packageMap.set(pack.id, pack));
+            const filteredPackages = allowedPackageIds.size > 0
+              ? normalized.filter((pack) => allowedPackageIds.has(pack.id))
+              : normalized;
+
+            if (filteredPackages.length > 0) {
+              filteredPackages.forEach((pack) => packageMap.set(pack.id, pack));
               loadedForProduct = true;
               break;
             }
@@ -538,7 +645,7 @@ export default function CreateOrderModal({ products, onClose, onCreated }: Props
 
           <div>
             <label className="mb-2 block text-xs uppercase tracking-wide text-neutral-500 dark:text-neutral-300">Platform Type</label>
-            <select className="w-full rounded-xl border border-neutral-300 bg-white/80 px-3.5 py-3 text-sm text-neutral-900 outline-none transition focus:border-neutral-900 focus:ring-2 focus:ring-black/10 dark:border-neutral-700 dark:bg-neutral-900/80 dark:text-white dark:focus:border-white dark:focus:ring-white/15" value={form.platform_type} onChange={(e) => setForm({ ...form, platform_type: e.target.value })}>
+            <select className="w-full rounded-xl border border-neutral-300 bg-white/80 px-3.5 py-3 text-sm text-neutral-900 outline-none transition focus:border-neutral-900 focus:ring-2 focus:ring-black/10 dark:border-neutral-700 dark:bg-neutral-900/80 dark:text-white dark:focus:border-white dark:focus:ring-white/15" value={form.platform_type} onChange={(e) => setForm({ ...form, platform_type: e.target.value, products: [], package_type: '' })}>
               {platformOptions.map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}
