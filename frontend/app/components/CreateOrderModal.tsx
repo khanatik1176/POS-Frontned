@@ -302,7 +302,6 @@ export default function CreateOrderModal({ products, onClose, onCreated }: Props
   const [saving, setSaving] = useState(false);
   const [isProductMenuOpen, setIsProductMenuOpen] = useState(false);
   const productMenuRef = useRef<HTMLDivElement | null>(null);
-  const [allProducts, setAllProducts] = useState<LocalProduct[]>([]);
   const [availableProducts, setAvailableProducts] = useState<LocalProduct[]>([]);
   const [apiPackages, setApiPackages] = useState<PackageOption[]>([]);
   const [platformOptions, setPlatformOptions] = useState(defaultPlatformOptions);
@@ -383,12 +382,6 @@ export default function CreateOrderModal({ products, onClose, onCreated }: Props
   };
 
   useEffect(() => {
-    const normalizedFromProps: LocalProduct[] = products.map((product) => ({ ...product, platformKeys: [] }));
-    setAllProducts(normalizedFromProps);
-    setAvailableProducts(filterProductsByPlatform(normalizedFromProps, form.platform_type));
-  }, [products, form.platform_type]);
-
-  useEffect(() => {
     let isMounted = true;
 
     const loadLookups = async () => {
@@ -448,39 +441,14 @@ export default function CreateOrderModal({ products, onClose, onCreated }: Props
   useEffect(() => {
     let isMounted = true;
 
-    const loadProducts = async () => {
-      const endpoints = ['/products/', '/product-names/', '/lookups/products/'];
-      for (const endpoint of endpoints) {
-        try {
-          const payload = await apiFetch<Product[] | Record<string, unknown>>(endpoint);
-          const normalized = normalizeProductsPayload(payload);
-          if (!isMounted) return;
-          if (normalized.length > 0) {
-            setAllProducts(normalized);
-            setAvailableProducts(filterProductsByPlatform(normalized, form.platform_type));
-            return;
-          }
-        } catch {
-          // Try next endpoint.
-        }
-      }
-    };
-
-    loadProducts();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [form.platform_type]);
-
-  useEffect(() => {
-    let isMounted = true;
-
     const loadProductsByPlatform = async () => {
       const encodedPlatform = encodeURIComponent(form.platform_type);
       const endpoints = [
         `/products/?platform_type=${encodedPlatform}`,
+        `/products/?platformType=${encodedPlatform}`,
         `/products/?platform=${encodedPlatform}`,
+        `/products/?platform_code=${encodedPlatform}`,
+        `/products/?platformCode=${encodedPlatform}`,
         `/product-names/?platform_type=${encodedPlatform}`,
         `/lookups/products/?platform_type=${encodedPlatform}`,
       ];
@@ -492,7 +460,7 @@ export default function CreateOrderModal({ products, onClose, onCreated }: Props
           if (!isMounted) return;
 
           if (normalized.length > 0) {
-            setAvailableProducts(filterProductsByPlatform(normalized, form.platform_type));
+            setAvailableProducts(normalized);
             return;
           }
         } catch {
@@ -501,7 +469,7 @@ export default function CreateOrderModal({ products, onClose, onCreated }: Props
       }
 
       if (!isMounted) return;
-      setAvailableProducts(filterProductsByPlatform(allProducts, form.platform_type));
+      setAvailableProducts([]);
     };
 
     loadProductsByPlatform();
@@ -509,7 +477,7 @@ export default function CreateOrderModal({ products, onClose, onCreated }: Props
     return () => {
       isMounted = false;
     };
-  }, [form.platform_type, allProducts]);
+  }, [form.platform_type]);
 
   useEffect(() => {
     let isMounted = true;
