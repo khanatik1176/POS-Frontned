@@ -271,7 +271,7 @@ const fetchLookupWithFallback = async (
   return [];
 };
 
-export default function CreateOrderModal({ products, onClose, onCreated }: Props) {
+export default function CreateOrderModal({onClose, onCreated }: Props) {
   const [form, setForm] = useState({
     customer_name: '',
     url: '',
