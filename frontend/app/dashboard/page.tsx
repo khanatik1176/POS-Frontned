@@ -425,7 +425,7 @@ export default function DashboardPage() {
         try {
           const updated = await apiFetch<Order | Record<string, unknown>>(endpoint, {
             method: 'POST',
-            body: JSON.stringify({}),
+            body: JSON.stringify({ order_id: orderId }),
           });
 
           if (updated && typeof updated === 'object' && 'id' in updated) {
