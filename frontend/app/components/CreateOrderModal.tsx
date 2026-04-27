@@ -117,18 +117,6 @@ const getProductPlatformKeys = (product: Record<string, unknown>): string[] => {
   return Array.from(keys);
 };
 
-const filterProductsByPlatform = (list: LocalProduct[], platformType: string) => {
-  const normalizedPlatform = normalizePlatformKey(platformType);
-  if (!normalizedPlatform) return list;
-
-  const withPlatformMetadata = list.filter((product) => (product.platformKeys || []).length > 0);
-  if (withPlatformMetadata.length === 0) {
-    return list;
-  }
-
-  return list.filter((product) => (product.platformKeys || []).includes(normalizedPlatform));
-};
-
 const extractArrayFromPayload = <T,>(payload: T[] | Record<string, unknown>, preferredKeys: string[] = []) => {
   if (Array.isArray(payload)) return payload;
 
