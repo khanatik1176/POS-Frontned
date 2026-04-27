@@ -23,7 +23,7 @@ export default function DeliverOrderModal({ order, onClose, onDelivered }: Props
     try {
       const data = await apiFetch<Order>(`/orders/${order.id}/deliver/`, {
         method: 'POST',
-        body: JSON.stringify({ order_id: order.id, delivered_reference: reference }),
+        body: JSON.stringify({ delivered_reference: reference }),
       });
       onDelivered(data);
       onClose();

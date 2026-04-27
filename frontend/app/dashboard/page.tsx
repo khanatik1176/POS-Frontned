@@ -415,49 +415,11 @@ export default function DashboardPage() {
     setVerifyingOrderId(orderId);
     setActionError('');
 
-    const verifyEndpoints = [`/orders/${orderId}/verify/`, `/orders/${orderId}/verify`];
-    const patchPayloads = [{ status: '2' }, { status: 2 }, { status: 'verified' }];
-
     try {
-      let lastError: unknown;
-
-      for (const endpoint of verifyEndpoints) {
-        try {
-          const updated = await apiFetch<Order | Record<string, unknown>>(endpoint, {
-            method: 'POST',
-            body: JSON.stringify({ order_id: orderId }),
-          });
-
-          if (updated && typeof updated === 'object' && 'id' in updated) {
-            setOrders((prev) => prev.map((order) => (order.id === orderId ? (updated as Order) : order)));
-          } else {
-            await refreshOrders(latestFiltersRef.current);
-          }
-          return;
-        } catch (err) {
-          lastError = err;
-        }
-      }
-
-      for (const payload of patchPayloads) {
-        try {
-          const updated = await apiFetch<Order | Record<string, unknown>>(`/orders/${orderId}/`, {
-            method: 'PATCH',
-            body: JSON.stringify(payload),
-          });
-
-          if (updated && typeof updated === 'object' && 'id' in updated) {
-            setOrders((prev) => prev.map((order) => (order.id === orderId ? (updated as Order) : order)));
-          } else {
-            await refreshOrders(latestFiltersRef.current);
-          }
-          return;
-        } catch (err) {
-          lastError = err;
-        }
-      }
-
-      throw lastError instanceof Error ? lastError : new Error('Failed to verify order');
+      const updated = await apiFetch<Order>(`/orders/${orderId}/verify/`, {
+        method: 'POST',
+      });
+      setOrders((prev) => prev.map((order) => (order.id === orderId ? updated : order)));
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'Failed to verify order');
     } finally {
