@@ -63,11 +63,40 @@ const customerStatusRequestMap: Record<string, string> = {
 
 const toTitleCase = (value: string) => value.charAt(0).toUpperCase() + value.slice(1);
 
-const getStatusCode = (order: Order) => {
-  if (order.status_detail?.code) return order.status_detail.code;
-  if (typeof order.status === 'string') return order.status;
-  if (typeof order.status === 'number') return statusCodeMap[order.status] || 'ordered';
+const normalizeStatusCode = (value: unknown): 'ordered' | 'verified' | 'completed' | 'declined' => {
+  if (typeof value === 'number') return statusCodeMap[value] || 'ordered';
+  if (typeof value !== 'string') return 'ordered';
+
+  const normalized = value.trim().toLowerCase();
+  if (normalized in statusClass) return normalized as 'ordered' | 'verified' | 'completed' | 'declined';
+
+  const numericCode = Number(normalized);
+  if (!Number.isNaN(numericCode) && statusCodeMap[numericCode]) {
+    return statusCodeMap[numericCode];
+  }
+
   return 'ordered';
+};
+
+const normalizeCustomerStatusCode = (value: unknown): 'new' | 'renewal' => {
+  if (typeof value === 'number') return customerStatusCodeMap[value] || 'new';
+  if (typeof value !== 'string') return 'new';
+
+  const normalized = value.trim().toLowerCase();
+  if (normalized === 'new' || normalized === 'renewal') return normalized;
+
+  const numericCode = Number(normalized);
+  if (!Number.isNaN(numericCode) && customerStatusCodeMap[numericCode]) {
+    return customerStatusCodeMap[numericCode];
+  }
+
+  return 'new';
+};
+
+const getStatusCode = (order: Order) => {
+  if (order.status_detail?.code) return normalizeStatusCode(order.status_detail.code);
+  if (order.status_detail?.name) return normalizeStatusCode(order.status_detail.name);
+  return normalizeStatusCode(order.status);
 };
 
 const getStatusLabel = (order: Order) => {
@@ -76,10 +105,9 @@ const getStatusLabel = (order: Order) => {
 };
 
 const getCustomerStatusCode = (order: Order) => {
-  if (order.customer_status_detail?.code) return order.customer_status_detail.code;
-  if (typeof order.customer_status === 'string') return order.customer_status;
-  if (typeof order.customer_status === 'number') return customerStatusCodeMap[order.customer_status] || 'new';
-  return 'new';
+  if (order.customer_status_detail?.code) return normalizeCustomerStatusCode(order.customer_status_detail.code);
+  if (order.customer_status_detail?.name) return normalizeCustomerStatusCode(order.customer_status_detail.name);
+  return normalizeCustomerStatusCode(order.customer_status);
 };
 
 const getCustomerStatusLabel = (order: Order) => {
@@ -304,6 +332,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [verifyingOrderId, setVerifyingOrderId] = useState<number | null>(null);
   const [actionError, setActionError] = useState('');
+  const [wsDisconnected, setWsDisconnected] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [deliveryOrder, setDeliveryOrder] = useState<Order | null>(null);
   const [filters, setFilters] = useState(initialFilters);
@@ -379,10 +408,17 @@ export default function DashboardPage() {
     let socket: WebSocket | null = null;
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
     let isClosedByCleanup = false;
+    let reconnectAttempts = 0;
+    const MAX_RECONNECT_ATTEMPTS = 5;
 
     const connect = () => {
       const wsUrl = getOrdersWsUrl(token);
       socket = new WebSocket(wsUrl);
+
+      socket.onopen = () => {
+        reconnectAttempts = 0;
+        setWsDisconnected(false);
+      };
 
       socket.onmessage = () => {
         void refreshOrders(latestFiltersRef.current);
@@ -394,6 +430,11 @@ export default function DashboardPage() {
 
       socket.onclose = () => {
         if (isClosedByCleanup) return;
+        reconnectAttempts += 1;
+        if (reconnectAttempts > MAX_RECONNECT_ATTEMPTS) {
+          setWsDisconnected(true);
+          return;
+        }
         reconnectTimer = setTimeout(connect, 3000);
       };
     };
@@ -409,6 +450,17 @@ export default function DashboardPage() {
     };
   }, [refreshOrders]);
 
+  useEffect(() => {
+    const token = localStorage.getItem('accessToken') || localStorage.getItem('token');
+    if (!token) return;
+
+    const interval = setInterval(() => {
+      void refreshOrders(latestFiltersRef.current);
+    }, 15000);
+
+    return () => clearInterval(interval);
+  }, [refreshOrders]);
+
   const verifyOrder = async (orderId: number) => {
     if (verifyingOrderId === orderId) return;
 
@@ -416,10 +468,34 @@ export default function DashboardPage() {
     setActionError('');
 
     try {
-      const updated = await apiFetch<Order>(`/orders/${orderId}/verify/`, {
-        method: 'POST',
-      });
-      setOrders((prev) => prev.map((order) => (order.id === orderId ? updated : order)));
+      const verifyEndpoints = [`/orders/${orderId}/verify/`, `/orders/${orderId}/verify`];
+      const verifyMethods: Array<'POST' | 'PATCH'> = ['POST', 'PATCH'];
+      let updatedOrder: Order | null = null;
+      let lastError: unknown;
+
+      for (const endpoint of verifyEndpoints) {
+        for (const method of verifyMethods) {
+          try {
+            updatedOrder = await apiFetch<Order>(endpoint, {
+              method,
+            });
+            break;
+          } catch (err) {
+            lastError = err;
+          }
+        }
+
+        if (updatedOrder) {
+          break;
+        }
+      }
+
+      if (!updatedOrder) {
+        throw lastError instanceof Error ? lastError : new Error('Failed to verify order');
+      }
+
+      setOrders((prev) => prev.map((order) => (order.id === orderId ? updatedOrder : order)));
+      void refreshOrders(latestFiltersRef.current);
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'Failed to verify order');
     } finally {
@@ -514,6 +590,7 @@ export default function DashboardPage() {
         </div>
 
         <div className="min-w-0 rounded-[18px] border border-neutral-300 bg-white/90 p-4 shadow-[0_0_0_1px_rgba(0,0,0,0.08),0_24px_58px_-36px_rgba(0,0,0,0.25)] backdrop-blur-sm md:p-5 dark:border-neutral-700 dark:bg-neutral-900/90 dark:shadow-[0_0_0_1px_rgba(255,255,255,0.08),0_24px_58px_-36px_rgba(255,255,255,0.12)]">
+          {wsDisconnected && <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700 dark:border-amber-800/70 dark:bg-amber-950/40 dark:text-amber-300">Live socket disconnected. Auto-refresh is active every 15s.</div>}
           {actionError && <div className="mb-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-800/70 dark:bg-red-950/40 dark:text-red-300">{actionError}</div>}
           {loading ? (
             <div className="py-2 text-sm text-neutral-500 dark:text-neutral-300">Loading orders...</div>

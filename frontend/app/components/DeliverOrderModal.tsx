@@ -20,11 +20,39 @@ export default function DeliverOrderModal({ order, onClose, onDelivered }: Props
     e.preventDefault();
     setSaving(true);
     setError('');
+
+    const methods: Array<'POST' | 'PATCH'> = ['POST', 'PATCH'];
+    const payloads = [
+      { delivered_reference: reference },
+      { deliveredReference: reference },
+    ];
+
     try {
-      const data = await apiFetch<Order>(`/orders/${order.id}/deliver/`, {
-        method: 'POST',
-        body: JSON.stringify({ delivered_reference: reference }),
-      });
+      let data: Order | null = null;
+      let lastError: unknown;
+
+      for (const method of methods) {
+        for (const payload of payloads) {
+          try {
+            data = await apiFetch<Order>(`/orders/${order.id}/deliver/`, {
+              method,
+              body: JSON.stringify(payload),
+            });
+            break;
+          } catch (err) {
+            lastError = err;
+          }
+        }
+
+        if (data) {
+          break;
+        }
+      }
+
+      if (!data) {
+        throw lastError instanceof Error ? lastError : new Error('Failed to deliver order');
+      }
+
       onDelivered(data);
       onClose();
     } catch (err) {
