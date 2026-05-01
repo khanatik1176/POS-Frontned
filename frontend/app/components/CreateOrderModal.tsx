@@ -430,6 +430,14 @@ export default function CreateOrderModal({onClose, onCreated }: Props) {
     let isMounted = true;
 
     const loadProductsByPlatform = async () => {
+      setAvailableProducts([]);
+      setForm((prev) => ({
+        ...prev,
+        products: [],
+        package_type: '',
+      }));
+      setApiPackages([]);
+
       const encodedPlatform = encodeURIComponent(form.platform_type);
       const endpoints = [
         `/products/?platform_type=${encodedPlatform}`,
