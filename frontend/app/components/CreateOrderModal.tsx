@@ -13,7 +13,21 @@ interface Props {
 }
 
 type PackageOption = { id: number; name: string };
-type LocalProduct = Product & { platformKeys: string[] };
+
+type PlatformProductItem = {
+  id?: number | string;
+  value?: number | string;
+  name?: string;
+  label?: string;
+  title?: string;
+  packages?: Array<{
+    id?: number | string;
+    value?: number | string;
+    name?: string;
+    label?: string;
+    title?: string;
+  }>;
+};
 
 type PlatformLookupItem = {
   id?: number | string;
@@ -24,6 +38,7 @@ type PlatformLookupItem = {
   name?: string;
   label?: string;
   title?: string;
+  products?: PlatformProductItem[];
 };
 
 type PlatformLookupResponse = PlatformLookupItem[] | {
@@ -129,7 +144,7 @@ const extractArrayFromPayload = <T,>(payload: T[] | Record<string, unknown>, pre
   return [];
 };
 
-const normalizeProductsPayload = (payload: Product[] | Record<string, unknown>): LocalProduct[] => {
+const normalizeProductsPayload = (payload: Product[] | Record<string, unknown>): Product[] => {
   const rawProducts = extractArrayFromPayload(payload, ['products']);
 
   return rawProducts
@@ -173,10 +188,9 @@ const normalizeProductsPayload = (payload: Product[] | Record<string, unknown>):
         id,
         name: String(nameValue),
         packages,
-        platformKeys: getProductPlatformKeys(product),
       };
     })
-    .filter((item): item is LocalProduct => item !== null);
+    .filter((item): item is Product => item !== null);
 };
 
 const normalizePackagePayload = (payload: Record<string, unknown> | Array<unknown>): PackageOption[] => {
@@ -239,6 +253,46 @@ const normalizePlatformOptions = (payload: PlatformLookupResponse, preferredKeys
     .filter((item): item is { value: string; label: string } => item !== null);
 };
 
+const normalizePlatformCatalog = (payload: PlatformLookupResponse) => {
+  const rawPlatforms = extractLookupItems(payload, ['platform_types']);
+
+  return rawPlatforms
+    .map((item) => {
+      const value = item.code ?? item.value ?? item.key ?? item.slug ?? item.id;
+      if (value === undefined || value === null) return null;
+      const label = item.name ?? item.label ?? item.title ?? String(value);
+      const products: Product[] = (item.products ?? [])
+        .map((product) => {
+          const productId = Number(product.id ?? product.value);
+          const productName = product.name ?? product.label ?? product.title;
+          if (Number.isNaN(productId) || !productName) return null;
+
+          const packages = (product.packages ?? [])
+            .map((pack) => {
+              const packId = Number(pack.id ?? pack.value);
+              const packName = pack.name ?? pack.label ?? pack.title;
+              if (Number.isNaN(packId) || !packName) return null;
+
+              return { id: packId, name: String(packName) };
+            })
+            .filter((pack): pack is PackageOption => pack !== null);
+
+          return {
+            id: productId,
+            name: String(productName),
+            packages,
+          };
+        })
+        .filter((product): product is Product => product !== null);
+      return {
+        value: String(value),
+        label: String(label),
+        products,
+      };
+    })
+    .filter((item): item is { value: string; label: string; products: Product[] } => item !== null);
+};
+
 const isRenewalCustomerStatus = (
   selectedStatus: string,
   options: Array<{ value: string; label: string }>,
@@ -271,6 +325,18 @@ const fetchLookupWithFallback = async (
   return [];
 };
 
+const fetchPlatformCatalogWithFallback = async (endpoints: string[]): Promise<PlatformLookupResponse | null> => {
+  for (const endpoint of endpoints) {
+    try {
+      return await apiFetch<PlatformLookupResponse>(endpoint);
+    } catch {
+      // Try next endpoint candidate.
+    }
+  }
+
+  return null;
+};
+
 export default function CreateOrderModal({onClose, onCreated }: Props) {
   const [form, setForm] = useState({
     customer_name: '',
@@ -290,9 +356,10 @@ export default function CreateOrderModal({onClose, onCreated }: Props) {
   const [saving, setSaving] = useState(false);
   const [isProductMenuOpen, setIsProductMenuOpen] = useState(false);
   const productMenuRef = useRef<HTMLDivElement | null>(null);
-  const [availableProducts, setAvailableProducts] = useState<LocalProduct[]>([]);
+  const [availableProducts, setAvailableProducts] = useState<Product[]>([]);
   const [apiPackages, setApiPackages] = useState<PackageOption[]>([]);
   const [platformOptions, setPlatformOptions] = useState(defaultPlatformOptions);
+  const [platformCatalog, setPlatformCatalog] = useState<Array<{ value: string; label: string; products: Product[] }>>([]);
   const [paymentMethodOptions, setPaymentMethodOptions] = useState(defaultPaymentMethodOptions);
   const [customerStatusOptions, setCustomerStatusOptions] = useState(defaultCustomerStatusOptions);
   const [paymentMediumOptions, setPaymentMediumOptions] = useState(defaultPaymentMediumOptions);
@@ -373,8 +440,8 @@ export default function CreateOrderModal({onClose, onCreated }: Props) {
     let isMounted = true;
 
     const loadLookups = async () => {
-      const [platformOptionsFromApi, paymentMethodOptionsFromApi, customerStatusOptionsFromApi, paymentMediumOptionsFromApi] = await Promise.all([
-        fetchLookupWithFallback(['/lookups/platform-types/', '/platform-types/', '/lookups/'], ['platform_types']),
+      const [platformPayload, paymentMethodOptionsFromApi, customerStatusOptionsFromApi, paymentMediumOptionsFromApi] = await Promise.all([
+        fetchPlatformCatalogWithFallback(['/lookups/platform-types/', '/platform-types/', '/lookups/']),
         fetchLookupWithFallback(['/lookups/payment-methods/', '/payment-methods/', '/lookups/'], ['payment_methods']),
         fetchLookupWithFallback(['/lookups/customer-statuses/', '/customer-statuses/', '/lookups/'], ['customer_statuses']),
         fetchLookupWithFallback(['/lookups/payment-mediums/', '/payment-mediums/', '/lookups/'], ['payment_mediums', 'payment_media']),
@@ -382,13 +449,17 @@ export default function CreateOrderModal({onClose, onCreated }: Props) {
 
       if (!isMounted) return;
 
-      if (platformOptionsFromApi.length > 0) {
-        setPlatformOptions(platformOptionsFromApi);
+      const platformCatalogFromApi = platformPayload ? normalizePlatformCatalog(platformPayload) : [];
+      if (platformCatalogFromApi.length > 0) {
+        setPlatformCatalog(platformCatalogFromApi);
+        setPlatformOptions(platformCatalogFromApi.map((platform) => ({ value: platform.value, label: platform.label })));
         setForm((prev) => (
-          platformOptionsFromApi.some((option) => option.value === prev.platform_type)
+          platformCatalogFromApi.some((option) => option.value === prev.platform_type)
             ? prev
-            : { ...prev, platform_type: platformOptionsFromApi[0].value }
+            : { ...prev, platform_type: platformCatalogFromApi[0].value }
         ));
+      } else {
+        setPlatformCatalog([]);
       }
 
       if (paymentMethodOptionsFromApi.length > 0) {
@@ -427,53 +498,15 @@ export default function CreateOrderModal({onClose, onCreated }: Props) {
   }, []);
 
   useEffect(() => {
-    let isMounted = true;
-
-    const loadProductsByPlatform = async () => {
-      setAvailableProducts([]);
-      setForm((prev) => ({
-        ...prev,
-        products: [],
-        package_type: '',
-      }));
-      setApiPackages([]);
-
-      const encodedPlatform = encodeURIComponent(form.platform_type);
-      const endpoints = [
-        `/products/?platform_type=${encodedPlatform}`,
-        `/products/?platformType=${encodedPlatform}`,
-        `/products/?platform=${encodedPlatform}`,
-        `/products/?platform_code=${encodedPlatform}`,
-        `/products/?platformCode=${encodedPlatform}`,
-        `/product-names/?platform_type=${encodedPlatform}`,
-        `/lookups/products/?platform_type=${encodedPlatform}`,
-      ];
-
-      for (const endpoint of endpoints) {
-        try {
-          const payload = await apiFetch<Product[] | Record<string, unknown>>(endpoint);
-          const normalized = normalizeProductsPayload(payload);
-          if (!isMounted) return;
-
-          if (normalized.length > 0) {
-            setAvailableProducts(normalized);
-            return;
-          }
-        } catch {
-          // Try next endpoint.
-        }
-      }
-
-      if (!isMounted) return;
-      setAvailableProducts([]);
-    };
-
-    loadProductsByPlatform();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [form.platform_type]);
+    const selectedPlatform = platformCatalog.find((platform) => platform.value === form.platform_type);
+    setAvailableProducts(selectedPlatform?.products ?? []);
+    setForm((prev) => ({
+      ...prev,
+      products: [],
+      package_type: '',
+    }));
+    setApiPackages([]);
+  }, [form.platform_type, platformCatalog]);
 
   useEffect(() => {
     let isMounted = true;
