@@ -441,7 +441,7 @@ export default function CreateOrderModal({onClose, onCreated }: Props) {
     try {
       const items = form.packageSelections.map((selection) => ({
         product: Number(selection.productId),
-        package_type: Number(selection.packageId),
+        package_types: Number(selection.packageId),
         quantity: Number(form.quantity),
       }));
 
