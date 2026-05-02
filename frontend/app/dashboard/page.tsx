@@ -16,13 +16,14 @@ import {
   LogOut,
   Music2,
   Youtube,
+  Loader,
 } from 'lucide-react';
 
 const statusClass: Record<string, string> = {
-  ordered: 'text-amber-700 dark:text-amber-300',
-  verified: 'text-sky-700 dark:text-sky-300',
-  completed: 'text-emerald-700 dark:text-emerald-300',
-  declined: 'text-rose-700 dark:text-rose-300',
+  ordered: 'bg-amber-50 text-amber-700 border-amber-200/60 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-800/50',
+  verified: 'bg-sky-50 text-sky-700 border-sky-200/60 dark:bg-sky-900/30 dark:text-sky-300 dark:border-sky-800/50',
+  completed: 'bg-emerald-50 text-emerald-700 border-emerald-200/60 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-800/50',
+  declined: 'bg-rose-50 text-rose-700 border-rose-200/60 dark:bg-rose-900/30 dark:text-rose-300 dark:border-rose-800/50',
 };
 
 const customerStatusClass: Record<string, string> = {
@@ -31,10 +32,10 @@ const customerStatusClass: Record<string, string> = {
 };
 
 const actionClass = {
-  verify: 'border-amber-300 bg-amber-100/70 text-amber-800 hover:bg-amber-200/70 dark:border-amber-700 dark:bg-amber-900/35 dark:text-amber-300 dark:hover:bg-amber-900/50',
-  deliver: 'border-sky-300 bg-sky-100/70 text-sky-800 hover:bg-sky-200/70 dark:border-sky-700 dark:bg-sky-900/35 dark:text-sky-300 dark:hover:bg-sky-900/50',
-  done: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
-  declined: 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300',
+  verify: 'bg-gradient-to-r from-amber-400 to-orange-500 text-white shadow-sm hover:shadow-md hover:from-amber-500 hover:to-orange-600 border-none ring-1 ring-amber-500/20 dark:ring-amber-400/20',
+  deliver: 'bg-gradient-to-r from-sky-400 to-indigo-500 text-white shadow-sm hover:shadow-md hover:from-sky-500 hover:to-indigo-600 border-none ring-1 ring-sky-500/20 dark:ring-sky-400/20',
+  done: 'bg-emerald-50 text-emerald-600 border-emerald-200/60 dark:bg-emerald-900/30 dark:text-emerald-400 dark:border-emerald-800/50',
+  declined: 'bg-neutral-50 text-neutral-500 border-neutral-200/60 dark:bg-neutral-800/50 dark:text-neutral-400 dark:border-neutral-700/50',
 };
 
 const statusCodeMap: Record<number, 'ordered' | 'verified' | 'completed' | 'declined'> = {
@@ -622,37 +623,37 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        <div className="min-w-0 rounded-[18px] border border-neutral-300 bg-white/90 p-4 shadow-[0_0_0_1px_rgba(0,0,0,0.08),0_24px_58px_-36px_rgba(0,0,0,0.25)] backdrop-blur-sm md:p-5 dark:border-neutral-700 dark:bg-neutral-900/90 dark:shadow-[0_0_0_1px_rgba(255,255,255,0.08),0_24px_58px_-36px_rgba(255,255,255,0.12)]">
-          {wsDisconnected && <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700 dark:border-amber-800/70 dark:bg-amber-950/40 dark:text-amber-300">Live socket disconnected. Auto-refresh is active every 15s.</div>}
-          {actionError && <div className="mb-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-800/70 dark:bg-red-950/40 dark:text-red-300">{actionError}</div>}
+        <div className="min-w-0 rounded-2xl border border-neutral-200/60 bg-white/60 p-4 shadow-sm backdrop-blur-md md:p-5 dark:border-neutral-800/60 dark:bg-neutral-900/40">
+          {wsDisconnected && <div className="mb-4 rounded-xl border border-amber-200/50 bg-amber-50/50 px-4 py-3 text-sm text-amber-700 dark:border-amber-800/50 dark:bg-amber-950/20 dark:text-amber-300">Live socket disconnected. Auto-refresh is active every 15s.</div>}
+          {actionError && <div className="mb-4 rounded-xl border border-red-200/50 bg-red-50/50 px-4 py-3 text-sm text-red-700 dark:border-red-800/50 dark:bg-red-950/20 dark:text-red-300">{actionError}</div>}
           {loading ? (
-            <div className="py-2 text-sm text-neutral-500 dark:text-neutral-300">Loading orders...</div>
+            <div className="flex items-center justify-center py-12 text-sm text-neutral-500 dark:text-neutral-400">Loading orders...</div>
           ) : (
             <>
               <div className="hidden min-w-0 lg:block">
-                <div className="w-full max-w-full overflow-x-auto overscroll-x-contain rounded-md border border-neutral-300 bg-white/70 dark:border-neutral-700 dark:bg-neutral-900/60">
+                <div className="w-full max-w-full overflow-x-auto overscroll-x-contain rounded-xl border border-neutral-200/60 bg-white/80 shadow-sm dark:border-neutral-800/60 dark:bg-neutral-950/50">
                   <table className="w-full min-w-[1120px] text-sm xl:min-w-[1240px]">
-                    <thead className="sticky top-0 z-10 bg-neutral-100/90 backdrop-blur-sm dark:bg-neutral-900/90">
-                      <tr className="border-b border-neutral-300 dark:border-neutral-700">
-                        {['Customer', 'Platform', 'Products & Packages', 'Qty', 'Payment', 'Primary Ref', 'Previous Ref', 'New Ref', 'Status', 'Customer Status', 'Entry Time', 'Actions'].map((head) => (
-                          <th key={head} className="h-11 px-3 text-left text-[11px] font-medium uppercase tracking-[0.06em] text-neutral-600 dark:text-neutral-300">{head}</th>
+                    <thead className="bg-neutral-50/80 backdrop-blur-sm dark:bg-neutral-900/50">
+                      <tr className="border-b border-neutral-200/60 dark:border-neutral-800/60">
+                        {['Customer', 'Platform', 'Products & Packages', 'Qty', 'Payment', 'Primary Ref', 'Previous Ref', 'New Ref', 'Status', 'User', 'Time', 'Actions'].map((head) => (
+                          <th key={head} className="whitespace-nowrap px-4 py-3.5 text-left text-[11px] font-bold uppercase tracking-widest text-neutral-500 dark:text-neutral-400">{head}</th>
                         ))}
                       </tr>
                     </thead>
                     <tbody>
                       {orders.map((order) => (
-                        <tr key={order.id} className="border-b border-neutral-200/90 transition-colors hover:bg-neutral-100/70 dark:border-neutral-800 dark:hover:bg-neutral-800/40">
-                          <td className="px-3 py-3 align-middle">{order.customer_name}</td>
-                          <td className="px-3 py-3 align-middle">
+                        <tr key={order.id} className="group border-b border-neutral-100/80 transition-colors last:border-b-0 hover:bg-neutral-50/80 dark:border-neutral-800/40 dark:hover:bg-neutral-900/40">
+                          <td className="px-4 py-4 align-middle font-medium text-neutral-900 dark:text-white">{order.customer_name}</td>
+                          <td className="px-4 py-4 align-middle">
                           <div className="flex items-center gap-2">
                             {(() => {
                               const PlatformIcon = getPlatformIcon(getPlatformCode(order));
                               return (
-                                <div className="group relative inline-flex">
-                                  <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-neutral-300 bg-white/70 text-neutral-900 dark:border-neutral-700 dark:bg-neutral-900/70 dark:text-white">
-                                    <PlatformIcon size={16} />
+                                <div className="group/icon relative inline-flex">
+                                  <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-neutral-200/60 bg-white text-neutral-700 shadow-sm transition hover:-translate-y-0.5 dark:border-neutral-700/60 dark:bg-neutral-800 dark:text-neutral-300">
+                                    <PlatformIcon size={14} />
                                   </span>
-                                  <span className="pointer-events-none invisible absolute left-1/2 top-full z-30 mt-2 w-max -translate-x-1/2 rounded-md bg-neutral-900 px-2 py-1 text-[11px] text-white opacity-0 transition group-hover:visible group-hover:opacity-100 dark:bg-white dark:text-neutral-900">
+                                  <span className="pointer-events-none invisible absolute left-1/2 top-full z-30 mt-2 w-max -translate-x-1/2 rounded-md bg-neutral-900 px-2.5 py-1 text-[11px] font-medium text-white opacity-0 shadow-lg transition group-hover/icon:visible group-hover/icon:opacity-100 dark:bg-white dark:text-neutral-900">
                                     {getPlatformLabel(order)}
                                   </span>
                                 </div>
@@ -663,53 +664,72 @@ export default function DashboardPage() {
                               href={order.url}
                               target="_blank"
                               rel="noreferrer"
-                              className="group relative inline-flex h-8 w-8 items-center justify-center rounded-lg border border-neutral-300 bg-white/70 text-neutral-900 transition hover:-translate-y-0.5 dark:border-neutral-700 dark:bg-neutral-900/70 dark:text-white"
+                              className="group/icon relative inline-flex h-8 w-8 items-center justify-center rounded-lg border border-neutral-200/60 bg-white text-neutral-700 shadow-sm transition hover:-translate-y-0.5 dark:border-neutral-700/60 dark:bg-neutral-800 dark:text-neutral-300"
                               aria-label="Open URL"
                             >
-                              <Link2 size={16} />
-                              <span className="pointer-events-none invisible absolute left-1/2 top-full z-30 mt-2 max-w-[280px] -translate-x-1/2 truncate rounded-md bg-neutral-900 px-2 py-1 text-[11px] text-white opacity-0 transition group-hover:visible group-hover:opacity-100 dark:bg-white dark:text-neutral-900">
+                              <Link2 size={14} />
+                              <span className="pointer-events-none invisible absolute left-1/2 top-full z-30 mt-2 max-w-[280px] -translate-x-1/2 truncate rounded-md bg-neutral-900 px-2.5 py-1 text-[11px] font-medium text-white opacity-0 shadow-lg transition group-hover/icon:visible group-hover/icon:opacity-100 dark:bg-white dark:text-neutral-900">
                                 {order.url}
                               </span>
                             </a>
                           </div>
                           </td>
-                          <td className="px-3 py-3 align-middle">
-                            <div className="space-y-1">
+                          <td className="px-4 py-4 align-middle">
+                            <div className="space-y-1.5">
                               {getProductsWithPackages(order).map((prod, idx) => (
                                 <div key={idx} className="text-sm">
-                                  <div className="font-medium text-neutral-900 dark:text-white">{prod.productName}</div>
-                                  <div className="text-xs text-neutral-500 dark:text-neutral-400">{prod.packageNames.join(', ')}</div>
+                                  <div className="font-semibold text-neutral-900 dark:text-white">{prod.productName}</div>
+                                  {prod.packageNames.length > 0 && (
+                                    <div className="mt-0.5 flex flex-wrap gap-1.5">
+                                      {prod.packageNames.map((pkg) => (
+                                        <span key={pkg} className="inline-flex items-center rounded-md border border-neutral-200 bg-neutral-50 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-neutral-600 dark:border-neutral-700 dark:bg-neutral-800/50 dark:text-neutral-300">
+                                          {pkg}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  )}
                                 </div>
                               ))}
                             </div>
                           </td>
-                          <td className="whitespace-nowrap px-3 py-3 align-middle">{getOrderItemsSummary(order).quantity || '—'}</td>
-                          <td className="px-3 py-3 align-middle"><div>{getPaymentMethodLabel(order)}</div><div className="text-xs text-neutral-500 dark:text-neutral-300">{getPaymentMediumLabel(order)}</div></td>
-                          <td className="whitespace-nowrap px-3 py-3 align-middle">{getPrimaryReference(order)}</td>
-                          <td className="whitespace-nowrap px-3 py-3 align-middle">{order.previous_reference_value || '—'}</td>
-                          <td className="whitespace-nowrap px-3 py-3 align-middle">{order.delivered_reference || '—'}</td>
-                          <td className="px-3 py-3 align-middle"><span className={`inline-flex rounded-full border border-current px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider ${statusClass[getStatusCode(order)]}`}>{getStatusLabel(order)}</span></td>
-                          <td className="px-3 py-3 align-middle">
-                          <span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider ${customerStatusClass[getCustomerStatusCode(order)] || 'bg-neutral-200 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-200'}`}>
-                            {getCustomerStatusLabel(order)}
-                          </span>
+                          <td className="whitespace-nowrap px-4 py-4 align-middle font-medium">{getOrderItemsSummary(order).quantity || '—'}</td>
+                          <td className="px-4 py-4 align-middle">
+                            <div className="font-medium text-neutral-900 dark:text-white">{getPaymentMethodLabel(order)}</div>
+                            <div className="mt-0.5 text-[11px] uppercase tracking-wider text-neutral-500 dark:text-neutral-400">{getPaymentMediumLabel(order)}</div>
                           </td>
-                          <td className="whitespace-nowrap px-3 py-3 align-middle">{formatEntryTime(order.entry_time)}</td>
-                          <td className="px-3 py-3 align-middle">
-                          {getStatusCode(order) === 'ordered' && (
-                            <button className={`inline-flex whitespace-nowrap items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-70 ${actionClass.verify}`} onClick={() => verifyOrder(order.id)} title="Verify" disabled={verifyingOrderId === order.id}>{verifyingOrderId === order.id ? 'Verifying...' : '✔ Verify'}</button>
-                          )}
-                          {getStatusCode(order) === 'verified' && (
-                            <button className={`inline-flex whitespace-nowrap items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium transition hover:-translate-y-0.5 ${actionClass.deliver}`} onClick={() => setDeliveryOrder(order)} title="Delivered">📦 Deliver</button>
-                          )}
-                          {getStatusCode(order) === 'completed' && <span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider ${actionClass.done}`}>Done</span>}
-                          {getStatusCode(order) === 'declined' && <span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider ${actionClass.declined}`}>Declined</span>}
+                          <td className="whitespace-nowrap px-4 py-4 align-middle font-mono text-xs">{getPrimaryReference(order)}</td>
+                          <td className="whitespace-nowrap px-4 py-4 align-middle font-mono text-xs text-neutral-500 dark:text-neutral-400">{order.previous_reference_value || '—'}</td>
+                          <td className="whitespace-nowrap px-4 py-4 align-middle font-mono text-xs text-neutral-500 dark:text-neutral-400">{order.delivered_reference || '—'}</td>
+                          <td className="px-4 py-4 align-middle">
+                            <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest ${statusClass[getStatusCode(order)]}`}>
+                              {getStatusLabel(order)}
+                            </span>
+                          </td>
+                          <td className="px-4 py-4 align-middle">
+                            <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest ${customerStatusClass[getCustomerStatusCode(order)] || 'bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300'}`}>
+                              {getCustomerStatusLabel(order)}
+                            </span>
+                          </td>
+                          <td className="whitespace-nowrap px-4 py-4 align-middle text-xs text-neutral-500 dark:text-neutral-400">{formatEntryTime(order.entry_time)}</td>
+                          <td className="px-4 py-4 align-middle">
+                            {getStatusCode(order) === 'ordered' && (
+                              <button className={`inline-flex whitespace-nowrap items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all disabled:cursor-not-allowed disabled:opacity-70 ${actionClass.verify}`} onClick={() => verifyOrder(order.id)} title="Verify" disabled={verifyingOrderId === order.id}>
+                                {verifyingOrderId === order.id ? <Loader size={14} className="animate-spin" /> : '✔'} Verify
+                              </button>
+                            )}
+                            {getStatusCode(order) === 'verified' && (
+                              <button className={`inline-flex whitespace-nowrap items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all ${actionClass.deliver}`} onClick={() => setDeliveryOrder(order)} title="Deliver">
+                                📦 Deliver
+                              </button>
+                            )}
+                            {getStatusCode(order) === 'completed' && <span className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest ${actionClass.done}`}>Done</span>}
+                            {getStatusCode(order) === 'declined' && <span className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest ${actionClass.declined}`}>Declined</span>}
                           </td>
                         </tr>
                       ))}
                       {orders.length === 0 && (
                         <tr>
-                          <td colSpan={12} className="px-3 py-6 text-center text-sm text-neutral-500 dark:text-neutral-300">No orders found.</td>
+                          <td colSpan={12} className="px-4 py-12 text-center text-sm text-neutral-500 dark:text-neutral-400">No orders found.</td>
                         </tr>
                       )}
                     </tbody>
@@ -717,75 +737,110 @@ export default function DashboardPage() {
                 </div>
               </div>
 
-              <div className="grid gap-3 lg:hidden">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:hidden">
                 {orders.map((order) => (
-                  <div key={order.id} className="rounded-2xl border border-neutral-300 bg-white/80 p-3 dark:border-neutral-700 dark:bg-neutral-900/80">
-                    <div className="mb-2 flex items-start justify-between gap-2">
-                      <div>
-                        <p className="text-sm font-semibold">{order.customer_name}</p>
-                        <div className="mt-1 flex items-center gap-2">
-                          {(() => {
-                            const PlatformIcon = getPlatformIcon(getPlatformCode(order));
-                            return (
-                              <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-neutral-300 bg-white/70 text-neutral-900 dark:border-neutral-700 dark:bg-neutral-900/70 dark:text-white" title={getPlatformLabel(order)}>
-                                <PlatformIcon size={14} />
-                              </span>
-                            );
-                          })()}
-                          <a
-                            href={order.url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-neutral-300 bg-white/70 text-neutral-900 dark:border-neutral-700 dark:bg-neutral-900/70 dark:text-white"
-                            title={order.url}
-                            aria-label="Open URL"
-                          >
-                            <Link2 size={14} />
-                          </a>
+                  <div key={order.id} className="relative flex flex-col justify-between overflow-hidden rounded-2xl border border-neutral-200/60 bg-white/80 p-5 shadow-sm transition-shadow hover:shadow-md dark:border-neutral-800/60 dark:bg-neutral-900/80">
+                    <div>
+                      <div className="mb-4 flex items-start justify-between gap-3">
+                        <div>
+                          <h4 className="text-base font-bold text-neutral-900 dark:text-white">{order.customer_name}</h4>
+                          <div className="mt-1.5 flex items-center gap-2">
+                            {(() => {
+                              const PlatformIcon = getPlatformIcon(getPlatformCode(order));
+                              return (
+                                <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-neutral-200 bg-neutral-50 text-neutral-600 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-300" title={getPlatformLabel(order)}>
+                                  <PlatformIcon size={14} />
+                                </span>
+                              );
+                            })()}
+                            <a
+                              href={order.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-neutral-200 bg-neutral-50 text-neutral-600 transition-colors hover:bg-neutral-100 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-700"
+                              title={order.url}
+                              aria-label="Open URL"
+                            >
+                              <Link2 size={14} />
+                            </a>
+                            <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest ${customerStatusClass[getCustomerStatusCode(order)] || 'bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300'}`}>
+                              {getCustomerStatusLabel(order)}
+                            </span>
+                          </div>
                         </div>
+                        <span className={`inline-flex shrink-0 items-center rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest ${statusClass[getStatusCode(order)]}`}>
+                          {getStatusLabel(order)}
+                        </span>
                       </div>
-                      <span className={`inline-flex rounded-full border border-current px-2 py-1 text-[10px] font-bold uppercase tracking-wider ${statusClass[getStatusCode(order)]}`}>{getStatusLabel(order)}</span>
-                    </div>
-                    <div className="grid grid-cols-1 gap-2 text-xs sm:grid-cols-2">
-                      <div><span className="text-neutral-500 dark:text-neutral-300">Platform:</span> {getPlatformLabel(order)}</div>
-                      <div>
-                        <span className="text-neutral-500 dark:text-neutral-300">Products & Packages:</span>
-                        <div className="mt-1 space-y-1">
+
+                      <div className="mb-4 rounded-xl border border-neutral-100 bg-neutral-50/50 p-3 dark:border-neutral-800/50 dark:bg-neutral-950/30">
+                        <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-neutral-500 dark:text-neutral-400">Products & Packages</span>
+                        <div className="space-y-2">
                           {getProductsWithPackages(order).map((prod, idx) => (
-                            <div key={idx} className="ml-2 text-xs">
-                              <div className="font-medium text-neutral-900 dark:text-white">{prod.productName}</div>
-                              <div className="text-neutral-500 dark:text-neutral-400">{prod.packageNames.join(', ')}</div>
+                            <div key={idx} className="text-sm">
+                              <div className="font-semibold text-neutral-900 dark:text-white">{prod.productName}</div>
+                              {prod.packageNames.length > 0 && (
+                                <div className="mt-1 flex flex-wrap gap-1.5">
+                                  {prod.packageNames.map((pkg) => (
+                                    <span key={pkg} className="inline-flex items-center rounded-md border border-neutral-200 bg-white px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-neutral-600 shadow-sm dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-300">
+                                      {pkg}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
                             </div>
                           ))}
                         </div>
                       </div>
-                      <div><span className="text-neutral-500 dark:text-neutral-300">Qty:</span> {getOrderItemsSummary(order).quantity || '—'}</div>
-                      <div><span className="text-neutral-500 dark:text-neutral-300">Payment:</span> {getPaymentMethodLabel(order)}</div>
-                      <div><span className="text-neutral-500 dark:text-neutral-300">Medium:</span> {getPaymentMediumLabel(order)}</div>
-                      <div><span className="text-neutral-500 dark:text-neutral-300">Primary Ref:</span> {getPrimaryReference(order)}</div>
-                      <div><span className="text-neutral-500 dark:text-neutral-300">Prev Ref:</span> {order.previous_reference_value || '—'}</div>
-                      <div><span className="text-neutral-500 dark:text-neutral-300">New Ref:</span> {order.delivered_reference_value || '—'}</div>
-                      <div>
-                        <span className="text-neutral-500 dark:text-neutral-300">Customer:</span>{' '}
-                        <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${customerStatusClass[getCustomerStatusCode(order)] || 'bg-neutral-200 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-200'}`}>
-                          {getCustomerStatusLabel(order)}
-                        </span>
+
+                      <div className="grid grid-cols-2 gap-y-3 gap-x-4 text-sm">
+                        <div>
+                          <span className="block text-[10px] font-bold uppercase tracking-widest text-neutral-500 dark:text-neutral-400">Quantity</span>
+                          <span className="font-medium text-neutral-900 dark:text-white">{getOrderItemsSummary(order).quantity || '—'}</span>
+                        </div>
+                        <div>
+                          <span className="block text-[10px] font-bold uppercase tracking-widest text-neutral-500 dark:text-neutral-400">Payment</span>
+                          <span className="font-medium text-neutral-900 dark:text-white">{getPaymentMethodLabel(order)}</span>
+                          <span className="ml-1 text-[11px] text-neutral-500 dark:text-neutral-400">({getPaymentMediumLabel(order)})</span>
+                        </div>
+                        <div>
+                          <span className="block text-[10px] font-bold uppercase tracking-widest text-neutral-500 dark:text-neutral-400">Primary Ref</span>
+                          <span className="font-mono text-xs text-neutral-900 dark:text-white">{getPrimaryReference(order)}</span>
+                        </div>
+                        {(order.previous_reference_value || order.delivered_reference_value) && (
+                          <div>
+                            <span className="block text-[10px] font-bold uppercase tracking-widest text-neutral-500 dark:text-neutral-400">Other Refs</span>
+                            <span className="font-mono text-xs text-neutral-500 dark:text-neutral-400">
+                              {[order.previous_reference_value, order.delivered_reference_value].filter(Boolean).join(', ')}
+                            </span>
+                          </div>
+                        )}
                       </div>
                     </div>
-                    <p className="mt-2 text-xs text-neutral-500 dark:text-neutral-300">{formatEntryTime(order.entry_time)}</p>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {getStatusCode(order) === 'ordered' && (
-                        <button className={`inline-flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-70 ${actionClass.verify}`} onClick={() => verifyOrder(order.id)} title="Verify" disabled={verifyingOrderId === order.id}>{verifyingOrderId === order.id ? 'Verifying...' : '✔ Verify'}</button>
-                      )}
-                      {getStatusCode(order) === 'verified' && (
-                        <button className={`inline-flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium transition hover:-translate-y-0.5 ${actionClass.deliver}`} onClick={() => setDeliveryOrder(order)} title="Delivered">📦 Deliver</button>
-                      )}
-                      {getStatusCode(order) === 'completed' && <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${actionClass.done}`}>Done</span>}
-                      {getStatusCode(order) === 'declined' && <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${actionClass.declined}`}>Declined</span>}
+
+                    <div className="mt-5 border-t border-neutral-100 pt-4 dark:border-neutral-800/80">
+                      <div className="mb-3 flex items-center justify-between">
+                        <span className="text-xs text-neutral-500 dark:text-neutral-400">{formatEntryTime(order.entry_time)}</span>
+                      </div>
+                      
+                      <div className="flex w-full flex-col gap-2">
+                        {getStatusCode(order) === 'ordered' && (
+                          <button className={`inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-all disabled:cursor-not-allowed disabled:opacity-70 ${actionClass.verify}`} onClick={() => verifyOrder(order.id)} disabled={verifyingOrderId === order.id}>
+                            {verifyingOrderId === order.id ? <Loader size={16} className="animate-spin" /> : '✔'} Verify Order
+                          </button>
+                        )}
+                        {getStatusCode(order) === 'verified' && (
+                          <button className={`inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-all ${actionClass.deliver}`} onClick={() => setDeliveryOrder(order)}>
+                            📦 Deliver Order
+                          </button>
+                        )}
+                        {getStatusCode(order) === 'completed' && <div className={`flex w-full justify-center rounded-xl border px-4 py-2 text-xs font-bold uppercase tracking-widest ${actionClass.done}`}>Completed</div>}
+                        {getStatusCode(order) === 'declined' && <div className={`flex w-full justify-center rounded-xl border px-4 py-2 text-xs font-bold uppercase tracking-widest ${actionClass.declined}`}>Declined</div>}
+                      </div>
                     </div>
                   </div>
                 ))}
-                {orders.length === 0 && <div className="text-sm text-neutral-500 dark:text-neutral-300">No orders found.</div>}
+                {orders.length === 0 && <div className="col-span-full py-8 text-center text-sm text-neutral-500 dark:text-neutral-400">No orders found.</div>}
               </div>
             </>
           )}

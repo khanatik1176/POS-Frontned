@@ -1,9 +1,9 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { apiFetch } from '@/lib/api';
 import { Order, Product } from '@/lib/types';
-import { ChevronDown, ChevronUp, Loader } from 'lucide-react';
+import { Loader, User, Link2, Box, Package, Hash, CreditCard, CheckCircle, X, Facebook, Instagram, Youtube, Globe, Music2, CircleHelp } from 'lucide-react';
 import ReferenceAutocomplete from './ReferenceAutocomplete';
 
 interface Props {
@@ -65,6 +65,18 @@ const defaultPlatformOptions = [
   { value: 'tiktok', label: 'TikTok' },
   { value: 'other', label: 'Other' },
 ];
+
+const getPlatformIcon = (platformCode: string) => {
+  const key = platformCode.toLowerCase();
+
+  if (['facebook', 'fb', 'meta'].includes(key)) return Facebook;
+  if (['instagram', 'ig'].includes(key)) return Instagram;
+  if (['youtube', 'yt'].includes(key)) return Youtube;
+  if (['website', 'web', 'site', 'blog', 'landing-page'].includes(key)) return Globe;
+  if (['tiktok', 'tik-tok'].includes(key)) return Music2;
+
+  return CircleHelp;
+};
 
 const defaultPaymentMethodOptions = [
   { value: 'bkash', label: 'bKash' },
@@ -229,11 +241,9 @@ export default function CreateOrderModal({onClose, onCreated }: Props) {
   const [error, setError] = useState('');
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [saving, setSaving] = useState(false);
-  const [isProductMenuOpen, setIsProductMenuOpen] = useState(false);
   const [isLoadingPlatforms, setIsLoadingPlatforms] = useState(true);
   const [isLoadingProducts, setIsLoadingProducts] = useState(false);
   const [isLoadingPackages, setIsLoadingPackages] = useState(false);
-  const productMenuRef = useRef<HTMLDivElement | null>(null);
   const [availableProducts, setAvailableProducts] = useState<Product[]>([]);
   const [platformOptions, setPlatformOptions] = useState(defaultPlatformOptions);
   const [platformCatalog, setPlatformCatalog] = useState<Array<{ value: string; label: string; products: Product[] }>>([]);
@@ -411,23 +421,7 @@ export default function CreateOrderModal({onClose, onCreated }: Props) {
     handleLoadPackages();
   }, [selectedProducts]);
 
-  useEffect(() => {
-    const handleOutside = (event: MouseEvent | TouchEvent) => {
-      const target = event.target as Node;
-      if (!productMenuRef.current) return;
-      if (!productMenuRef.current.contains(target)) {
-        setIsProductMenuOpen(false);
-      }
-    };
 
-    document.addEventListener('mousedown', handleOutside);
-    document.addEventListener('touchstart', handleOutside);
-
-    return () => {
-      document.removeEventListener('mousedown', handleOutside);
-      document.removeEventListener('touchstart', handleOutside);
-    };
-  }, []);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -481,251 +475,264 @@ export default function CreateOrderModal({onClose, onCreated }: Props) {
   };
 
   return (
-    <div className="fixed inset-0 z-[1000] flex items-start justify-center overflow-y-auto bg-black/70 p-3 sm:items-center md:p-5">
-      <div className="my-2 max-h-[95vh] w-full max-w-[900px] overflow-auto rounded-[18px] border border-neutral-300 bg-white/90 p-4 shadow-[0_0_0_1px_rgba(0,0,0,0.08),0_24px_58px_-36px_rgba(0,0,0,0.25)] backdrop-blur-sm sm:my-0 md:p-5 dark:border-neutral-700 dark:bg-neutral-900/90 dark:shadow-[0_0_0_1px_rgba(255,255,255,0.08),0_24px_58px_-36px_rgba(255,255,255,0.12)]">
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+    <div className="fixed inset-0 z-[1000] flex items-start justify-center overflow-y-auto bg-black/60 p-3 backdrop-blur-sm sm:items-center md:p-5">
+      <div className="my-2 max-h-[95vh] w-full max-w-[1000px] overflow-auto rounded-3xl border border-white/20 bg-white/80 p-5 shadow-[0_0_0_1px_rgba(0,0,0,0.08),0_24px_58px_-36px_rgba(0,0,0,0.25)] backdrop-blur-xl sm:my-0 md:p-8 dark:border-white/10 dark:bg-neutral-950/80 dark:shadow-[0_0_0_1px_rgba(255,255,255,0.08),0_24px_58px_-36px_rgba(255,255,255,0.12)]">
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 className="mb-1 text-xl font-semibold tracking-tight md:text-2xl">Create Order</h2>
-            <p className="text-sm text-neutral-500 dark:text-neutral-300">Entry time will be saved automatically by the system.</p>
+            <h2 className="bg-gradient-to-br from-neutral-900 to-neutral-500 bg-clip-text text-2xl font-bold tracking-tight text-transparent md:text-3xl dark:from-white dark:to-neutral-400">Create New Order</h2>
+            <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">Fill in the details below to initiate a new customer order.</p>
           </div>
           <button
-            className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-neutral-300 bg-white/70 px-3.5 py-3 text-sm font-semibold text-neutral-900 transition hover:-translate-y-0.5 sm:w-auto dark:border-neutral-700 dark:bg-neutral-900/70 dark:text-white"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-neutral-200 bg-white/50 text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-900 dark:border-neutral-800 dark:bg-neutral-900/50 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-white"
             onClick={onClose}
             type="button"
+            aria-label="Close"
           >
-            Close
+            <X size={20} />
           </button>
         </div>
 
-        <form className="grid grid-cols-1 gap-4 lg:grid-cols-2" onSubmit={submit}>
-          <div className="relative pb-5">
-            <label className="mb-2 block text-xs uppercase tracking-wide text-neutral-500 dark:text-neutral-300">Customer Name</label>
-            <input className="w-full rounded-xl border border-neutral-300 bg-white/80 px-3.5 py-3 text-sm text-neutral-900 outline-none transition focus:border-neutral-900 focus:ring-2 focus:ring-black/10 dark:border-neutral-700 dark:bg-neutral-900/80 dark:text-white dark:focus:border-white dark:focus:ring-white/15" required value={form.customer_name} onChange={(e) => {
-              setForm({ ...form, customer_name: e.target.value });
-              setFieldErrors((prev) => ({ ...prev, customer_name: undefined }));
-            }} />
-            {fieldErrors.customer_name && <p className="absolute bottom-0 left-0 text-xs text-red-600">{fieldErrors.customer_name}</p>}
-          </div>
-          <div className="relative pb-5">
-            <label className="mb-2 block text-xs uppercase tracking-wide text-neutral-500 dark:text-neutral-300">URL</label>
-            <input className="w-full rounded-xl border border-neutral-300 bg-white/80 px-3.5 py-3 text-sm text-neutral-900 outline-none transition focus:border-neutral-900 focus:ring-2 focus:ring-black/10 dark:border-neutral-700 dark:bg-neutral-900/80 dark:text-white dark:focus:border-white dark:focus:ring-white/15" type="url" required value={form.url} onChange={(e) => {
-              setForm({ ...form, url: e.target.value });
-              setFieldErrors((prev) => ({ ...prev, url: undefined }));
-            }} />
-            {fieldErrors.url && <p className="absolute bottom-0 left-0 text-xs text-red-600">{fieldErrors.url}</p>}
-          </div>
+        <form className="grid grid-cols-1 gap-8 lg:grid-cols-2" onSubmit={submit}>
+          {/* LEFT COLUMN: CUSTOMER INFO & METADATA */}
+          <div className="space-y-5 rounded-2xl border border-neutral-200/60 bg-white/40 p-5 shadow-sm dark:border-neutral-800/60 dark:bg-neutral-900/40">
+            <h3 className="mb-4 text-sm font-semibold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">Customer Information</h3>
 
-          <div>
-            <label className="mb-2 block text-xs uppercase tracking-wide text-neutral-500 dark:text-neutral-300">Platform Type</label>
-            <div className="relative">
-              <select disabled={isLoadingPlatforms} className="w-full rounded-xl border border-neutral-300 bg-white/80 px-3.5 py-3 text-sm text-neutral-900 outline-none transition focus:border-neutral-900 focus:ring-2 focus:ring-black/10 disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-900/80 dark:text-white dark:focus:border-white dark:focus:ring-white/15" value={form.platform_type} onChange={(e) => setForm({ ...form, platform_type: e.target.value, products: [], packageSelections: [] })}>
-                {platformOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-              {isLoadingPlatforms && (
-                <div className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2">
-                  <Loader size={18} className="animate-spin text-neutral-600 dark:text-neutral-400" />
+            <div className="relative pb-5">
+              <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-neutral-600 dark:text-neutral-300">Customer Name</label>
+              <div className="relative">
+                <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5 text-neutral-400">
+                  <User size={16} />
                 </div>
-              )}
+                <input className="w-full rounded-xl border border-neutral-300 bg-white/80 py-3 pl-10 pr-3.5 text-sm text-neutral-900 outline-none transition focus:border-neutral-900 focus:ring-2 focus:ring-black/10 dark:border-neutral-700 dark:bg-neutral-950/80 dark:text-white dark:focus:border-white dark:focus:ring-white/15" placeholder="e.g. Acme Corp" required value={form.customer_name} onChange={(e) => {
+                  setForm({ ...form, customer_name: e.target.value });
+                  setFieldErrors((prev) => ({ ...prev, customer_name: undefined }));
+                }} />
+              </div>
+              {fieldErrors.customer_name && <p className="absolute bottom-0 left-0 text-[11px] font-medium text-red-500">{fieldErrors.customer_name}</p>}
             </div>
-          </div>
 
-          <div className="relative pb-5 lg:col-span-2" ref={productMenuRef}>
-            <label className="mb-2 block text-xs uppercase tracking-wide text-neutral-500 dark:text-neutral-300">Product Name</label>
-            <div className="relative">
-              <button
-                type="button"
-                disabled={isLoadingProducts}
-                onClick={() => setIsProductMenuOpen((prev) => !prev)}
-                className="flex w-full items-center justify-between rounded-xl border border-neutral-300 bg-white/80 px-3.5 py-3 text-left text-sm text-neutral-900 outline-none transition focus:border-neutral-900 focus:ring-2 focus:ring-black/10 disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-900/80 dark:text-white dark:focus:border-white dark:focus:ring-white/15"
-              >
-                <span>
-                  {isLoadingProducts ? 'Loading products...' : form.products.length > 0 ? `${form.products.length} product(s) selected` : 'Select products'}
-                </span>
-                <span className="text-neutral-500 dark:text-neutral-300">
-                  {isLoadingProducts ? <Loader size={16} className="animate-spin" /> : isProductMenuOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                </span>
-              </button>
+            <div className="relative pb-5">
+              <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-neutral-600 dark:text-neutral-300">Website URL</label>
+              <div className="relative">
+                <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5 text-neutral-400">
+                  <Link2 size={16} />
+                </div>
+                <input className="w-full rounded-xl border border-neutral-300 bg-white/80 py-3 pl-10 pr-3.5 text-sm text-neutral-900 outline-none transition focus:border-neutral-900 focus:ring-2 focus:ring-black/10 dark:border-neutral-700 dark:bg-neutral-950/80 dark:text-white dark:focus:border-white dark:focus:ring-white/15" placeholder="https://" type="url" required value={form.url} onChange={(e) => {
+                  setForm({ ...form, url: e.target.value });
+                  setFieldErrors((prev) => ({ ...prev, url: undefined }));
+                }} />
+              </div>
+              {fieldErrors.url && <p className="absolute bottom-0 left-0 text-[11px] font-medium text-red-500">{fieldErrors.url}</p>}
+            </div>
 
-              {isProductMenuOpen && !isLoadingProducts && (
-                <div className="absolute z-20 mt-2 max-h-56 w-full overflow-auto rounded-xl border border-neutral-300 bg-white p-2 shadow-lg dark:border-neutral-700 dark:bg-neutral-900">
-                  {availableProducts.map((product) => {
-                    const checked = form.products.includes(product.name);
+            <div>
+              <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-neutral-600 dark:text-neutral-300">Platform Type</label>
+              {isLoadingPlatforms ? (
+                <div className="flex h-20 items-center justify-center rounded-xl border border-neutral-200 bg-white/50 dark:border-neutral-800 dark:bg-neutral-950/50">
+                  <Loader size={20} className="animate-spin text-neutral-400" />
+                </div>
+              ) : (
+                <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+                  {platformOptions.map((option) => {
+                    const isSelected = form.platform_type === option.value;
+                    const Icon = getPlatformIcon(option.value);
                     return (
-                      <label key={product.id} className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-2 text-sm hover:bg-neutral-100 dark:hover:bg-neutral-800">
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={() => toggleProduct(product.name)}
-                          className="h-4 w-4"
-                        />
-                        <span>{product.name}</span>
-                      </label>
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => setForm({ ...form, platform_type: option.value, products: [], packageSelections: [] })}
+                        className={`flex flex-col items-center justify-center gap-1.5 rounded-xl border p-2.5 transition-all ${
+                          isSelected
+                            ? 'border-neutral-900 bg-neutral-900 text-white shadow-md dark:border-white dark:bg-white dark:text-neutral-900'
+                            : 'border-neutral-200 bg-white/80 text-neutral-600 hover:border-neutral-400 hover:bg-neutral-50 dark:border-neutral-800 dark:bg-neutral-950/80 dark:text-neutral-400 dark:hover:border-neutral-600 dark:hover:bg-neutral-900'
+                        }`}
+                      >
+                        <Icon size={20} />
+                        <span className="text-[10px] font-medium uppercase tracking-wider">{option.label}</span>
+                      </button>
                     );
                   })}
                 </div>
               )}
             </div>
 
-            {form.products.length > 0 && (
-              <div className="mt-2 flex flex-wrap gap-2">
-                {form.products.map((name) => (
-                  <span key={name} className="inline-flex items-center gap-1 rounded-full border border-neutral-300 px-2 py-1 text-xs dark:border-neutral-700">
-                    {name}
-                    <button
-                      type="button"
-                      onClick={() => toggleProduct(name)}
-                      className="text-neutral-500 hover:text-neutral-900 dark:hover:text-white"
-                      aria-label={`Remove ${name}`}
-                    >
-                      x
-                    </button>
-                  </span>
-                ))}
-              </div>
-            )}
-            {fieldErrors.products && <p className="absolute bottom-0 left-0 text-xs text-red-600">{fieldErrors.products}</p>}
-          </div>
-
-          <div className="relative pb-5 lg:col-span-2">
-            <label className="mb-2 block text-xs uppercase tracking-wide text-neutral-500 dark:text-neutral-300">Packages (Select for each Product)</label>
-            {isLoadingPackages ? (
-              <div className="flex items-center justify-center rounded-lg border border-neutral-300 bg-neutral-50 p-8 dark:border-neutral-700 dark:bg-neutral-900/50">
-                <Loader size={20} className="animate-spin text-neutral-600 dark:text-neutral-400" />
-                <span className="ml-2 text-sm text-neutral-600 dark:text-neutral-400">Loading packages...</span>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {selectedProducts.length === 0 ? (
-                  <p className="text-sm text-neutral-500 dark:text-neutral-300">Select products first to choose packages.</p>
-                ) : (
-                  selectedProducts.map((product) => (
-                    <div key={product.id} className="rounded-lg border border-neutral-300 bg-neutral-50 p-3 dark:border-neutral-700 dark:bg-neutral-900/50">
-                      <h4 className="mb-2 text-sm font-semibold text-neutral-900 dark:text-white">{product.name}</h4>
-                      <div className="space-y-2">
-                        {product.packages.map((pack) => {
-                          const isSelected = getSelectedPackagesForProduct(product.id).includes(pack.id);
-                          return (
-                            <label key={pack.id} className="flex cursor-pointer items-center gap-2">
-                              <input
-                                type="checkbox"
-                                checked={isSelected}
-                                onChange={() => togglePackageSelection(product.id, pack.id)}
-                                className="h-4 w-4"
-                              />
-                              <span className="text-sm text-neutral-700 dark:text-neutral-300">{pack.name}</span>
-                            </label>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            )}
-
-            {form.packageSelections.length > 0 && (
-              <div className="mt-3 space-y-2">
-                <p className="text-xs font-semibold text-neutral-600 dark:text-neutral-400">Selected Packages:</p>
-                <div className="flex flex-wrap gap-2">
-                  {selectedProducts.map((product) => {
-                    const productSelections = getSelectedPackagesForProduct(product.id);
-                    return productSelections.map((packageId) => {
-                      const pack = product.packages.find((p) => p.id === packageId);
-                      return (
-                        <span
-                          key={`${product.id}-${packageId}`}
-                          className="inline-flex items-center gap-1 rounded-full border border-neutral-300 bg-neutral-100 px-2 py-1 text-xs text-neutral-700 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-300"
-                        >
-                          {product.name} - {pack?.name}
-                          <button
-                            type="button"
-                            onClick={() => togglePackageSelection(product.id, packageId)}
-                            className="text-neutral-500 hover:text-neutral-900 dark:hover:text-white"
-                            aria-label={`Remove ${product.name} - ${pack?.name}`}
-                          >
-                            ×
-                          </button>
-                        </span>
-                      );
-                    });
-                  })}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-neutral-600 dark:text-neutral-300">Payment Method</label>
+                <div className="relative">
+                  <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5 text-neutral-400">
+                    <CreditCard size={14} />
+                  </div>
+                  <select className="w-full appearance-none rounded-xl border border-neutral-300 bg-white/80 py-2.5 pl-9 pr-3.5 text-sm text-neutral-900 outline-none transition focus:border-neutral-900 focus:ring-2 focus:ring-black/10 dark:border-neutral-700 dark:bg-neutral-950/80 dark:text-white dark:focus:border-white dark:focus:ring-white/15" value={form.payment_method} onChange={(e) => setForm({ ...form, payment_method: e.target.value })}>
+                    {paymentMethodOptions.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
                 </div>
               </div>
-            )}
-            {fieldErrors.packageSelections && <p className="mt-2 text-xs text-red-600">{fieldErrors.packageSelections}</p>}
-          </div>
-
-          <div className="relative pb-5">
-            <label className="mb-2 block text-xs uppercase tracking-wide text-neutral-500 dark:text-neutral-300">Quantity</label>
-            <input className="w-full rounded-xl border border-neutral-300 bg-white/80 px-3.5 py-3 text-sm text-neutral-900 outline-none transition focus:border-neutral-900 focus:ring-2 focus:ring-black/10 dark:border-neutral-700 dark:bg-neutral-900/80 dark:text-white dark:focus:border-white dark:focus:ring-white/15" type="number" min={1} value={form.quantity} onChange={(e) => {
-              setForm({ ...form, quantity: Number(e.target.value) });
-              setFieldErrors((prev) => ({ ...prev, quantity: undefined }));
-            }} />
-            {fieldErrors.quantity && <p className="absolute bottom-0 left-0 text-xs text-red-600">{fieldErrors.quantity}</p>}
-          </div>
-
-          <div>
-            <label className="mb-2 block text-xs uppercase tracking-wide text-neutral-500 dark:text-neutral-300">Payment Method</label>
-            <select className="w-full rounded-xl border border-neutral-300 bg-white/80 px-3.5 py-3 text-sm text-neutral-900 outline-none transition focus:border-neutral-900 focus:ring-2 focus:ring-black/10 dark:border-neutral-700 dark:bg-neutral-900/80 dark:text-white dark:focus:border-white dark:focus:ring-white/15" value={form.payment_method} onChange={(e) => setForm({ ...form, payment_method: e.target.value })}>
-              {paymentMethodOptions.map((option) => (
-                <option key={option.value} value={option.value}>{option.label}</option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className="mb-2 block text-xs uppercase tracking-wide text-neutral-500 dark:text-neutral-300">Payment Medium</label>
-            <select className="w-full rounded-xl border border-neutral-300 bg-white/80 px-3.5 py-3 text-sm text-neutral-900 outline-none transition focus:border-neutral-900 focus:ring-2 focus:ring-black/10 dark:border-neutral-700 dark:bg-neutral-900/80 dark:text-white dark:focus:border-white dark:focus:ring-white/15" value={form.payment_medium} onChange={(e) => setForm({ ...form, payment_medium: e.target.value })}>
-              {paymentMediumOptions.map((option) => (
-                <option key={option.value} value={option.value}>{option.label}</option>
-              ))}
-            </select>
-          </div>
-
-          <div className="relative pb-5">
-            <ReferenceAutocomplete
-              label="Reference Number"
-              value={form.reference_number}
-              onChange={(value) => {
-                setForm({ ...form, reference_number: value });
-                setFieldErrors((prev) => ({ ...prev, reference_number: undefined }));
-              }}
-            />
-            {fieldErrors.reference_number && <p className="absolute bottom-0 left-0 text-xs text-red-600">{fieldErrors.reference_number}</p>}
-          </div>
-
-          <div>
-            <label className="mb-2 block text-xs uppercase tracking-wide text-neutral-500 dark:text-neutral-300">Customer Status</label>
-            <select className="w-full rounded-xl border border-neutral-300 bg-white/80 px-3.5 py-3 text-sm text-neutral-900 outline-none transition focus:border-neutral-900 focus:ring-2 focus:ring-black/10 dark:border-neutral-700 dark:bg-neutral-900/80 dark:text-white dark:focus:border-white dark:focus:ring-white/15" value={form.customer_status} onChange={(e) => setForm({ ...form, customer_status: e.target.value })}>
-              {customerStatusOptions.map((option) => (
-                <option key={option.value} value={option.value}>{option.label}</option>
-              ))}
-            </select>
-          </div>
-
-          {shouldShowPreviousReference && (
-            <div className="relative pb-5">
-              <ReferenceAutocomplete
-                label="Previous Reference"
-                value={form.previous_reference}
-                onChange={(value) => {
-                  setForm({ ...form, previous_reference: value });
-                  setFieldErrors((prev) => ({ ...prev, previous_reference: undefined }));
-                }}
-              />
-              {fieldErrors.previous_reference && <p className="absolute bottom-0 left-0 text-xs text-red-600">{fieldErrors.previous_reference}</p>}
+              <div>
+                <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-neutral-600 dark:text-neutral-300">Medium</label>
+                <select className="w-full rounded-xl border border-neutral-300 bg-white/80 py-2.5 px-3.5 text-sm text-neutral-900 outline-none transition focus:border-neutral-900 focus:ring-2 focus:ring-black/10 dark:border-neutral-700 dark:bg-neutral-950/80 dark:text-white dark:focus:border-white dark:focus:ring-white/15" value={form.payment_medium} onChange={(e) => setForm({ ...form, payment_medium: e.target.value })}>
+                  {paymentMediumOptions.map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </select>
+              </div>
             </div>
-          )}
 
-          <div className="md:col-span-2">
-            <button className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-neutral-900 bg-neutral-900 px-3.5 py-3 text-sm font-semibold tracking-wide text-white transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-70 dark:border-white dark:bg-white dark:text-neutral-950" disabled={saving} type="submit">
-              {saving ? 'Saving...' : 'Create Order'}
-            </button>
-            {error && <div className="mt-2 text-sm text-red-600">{error}</div>}
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="relative pb-5">
+                <ReferenceAutocomplete
+                  label="Reference Number"
+                  icon={<Hash size={14} />}
+                  value={form.reference_number}
+                  onChange={(value) => {
+                    setForm({ ...form, reference_number: value });
+                    setFieldErrors((prev) => ({ ...prev, reference_number: undefined }));
+                  }}
+                />
+                {fieldErrors.reference_number && <p className="absolute bottom-0 left-0 text-[11px] font-medium text-red-500">{fieldErrors.reference_number}</p>}
+              </div>
+
+              <div>
+                <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-neutral-600 dark:text-neutral-300">Customer Status</label>
+                <div className="relative">
+                  <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5 text-neutral-400">
+                    <CheckCircle size={14} />
+                  </div>
+                  <select className="w-full appearance-none rounded-xl border border-neutral-300 bg-white/80 py-2.5 pl-9 pr-3.5 text-sm text-neutral-900 outline-none transition focus:border-neutral-900 focus:ring-2 focus:ring-black/10 dark:border-neutral-700 dark:bg-neutral-950/80 dark:text-white dark:focus:border-white dark:focus:ring-white/15" value={form.customer_status} onChange={(e) => setForm({ ...form, customer_status: e.target.value })}>
+                    {customerStatusOptions.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {shouldShowPreviousReference && (
+              <div className="relative pb-5">
+                <ReferenceAutocomplete
+                  label="Previous Reference"
+                  icon={<Hash size={14} />}
+                  value={form.previous_reference}
+                  onChange={(value) => {
+                    setForm({ ...form, previous_reference: value });
+                    setFieldErrors((prev) => ({ ...prev, previous_reference: undefined }));
+                  }}
+                />
+                {fieldErrors.previous_reference && <p className="absolute bottom-0 left-0 text-[11px] font-medium text-red-500">{fieldErrors.previous_reference}</p>}
+              </div>
+            )}
+          </div>
+
+          {/* RIGHT COLUMN: ORDER DETAILS */}
+          <div className="flex flex-col justify-between space-y-5 rounded-2xl border border-neutral-200/60 bg-white/40 p-5 shadow-sm dark:border-neutral-800/60 dark:bg-neutral-900/40">
+            <div>
+              <h3 className="mb-4 text-sm font-semibold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">Order Details</h3>
+
+              <div className="relative pb-5">
+                <label className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-neutral-600 dark:text-neutral-300">
+                  <Box size={14} /> Select Products
+                </label>
+                
+                {isLoadingProducts ? (
+                  <div className="flex h-12 items-center px-4 text-sm text-neutral-500"><Loader size={16} className="mr-2 animate-spin" /> Loading products...</div>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {availableProducts.map((product) => {
+                      const isSelected = form.products.includes(product.name);
+                      return (
+                        <button
+                          key={product.id}
+                          type="button"
+                          onClick={() => toggleProduct(product.name)}
+                          className={`inline-flex items-center rounded-full border px-3.5 py-1.5 text-sm font-medium transition-colors ${
+                            isSelected
+                              ? 'border-indigo-600 bg-indigo-50 text-indigo-700 dark:border-indigo-400 dark:bg-indigo-900/30 dark:text-indigo-300'
+                              : 'border-neutral-200 bg-white/80 text-neutral-600 hover:border-neutral-300 hover:bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-950/80 dark:text-neutral-400 dark:hover:border-neutral-600'
+                          }`}
+                        >
+                          {product.name}
+                        </button>
+                      );
+                    })}
+                    {availableProducts.length === 0 && <span className="text-sm text-neutral-400">No products available.</span>}
+                  </div>
+                )}
+                {fieldErrors.products && <p className="absolute bottom-0 left-0 text-[11px] font-medium text-red-500">{fieldErrors.products}</p>}
+              </div>
+
+              <div className="relative pb-5">
+                <label className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-neutral-600 dark:text-neutral-300">
+                  <Package size={14} /> Select Packages
+                </label>
+                {isLoadingPackages ? (
+                  <div className="flex items-center rounded-xl border border-neutral-200 bg-white/50 p-6 dark:border-neutral-800 dark:bg-neutral-950/50">
+                    <Loader size={20} className="mr-3 animate-spin text-neutral-400" />
+                    <span className="text-sm text-neutral-500">Loading packages...</span>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {selectedProducts.length === 0 ? (
+                      <div className="rounded-xl border border-dashed border-neutral-300 bg-neutral-50/50 p-6 text-center text-sm text-neutral-500 dark:border-neutral-700 dark:bg-neutral-900/50">
+                        Please select products above to view their available packages.
+                      </div>
+                    ) : (
+                      selectedProducts.map((product) => (
+                        <div key={product.id} className="rounded-xl border border-neutral-200/60 bg-white/60 p-4 shadow-sm dark:border-neutral-700/60 dark:bg-neutral-900/60">
+                          <h4 className="mb-3 text-xs font-bold uppercase tracking-widest text-neutral-500 dark:text-neutral-400">{product.name}</h4>
+                          <div className="flex flex-wrap gap-2">
+                            {product.packages.map((pack) => {
+                              const isSelected = getSelectedPackagesForProduct(product.id).includes(pack.id);
+                              return (
+                                <button
+                                  key={pack.id}
+                                  type="button"
+                                  onClick={() => togglePackageSelection(product.id, pack.id)}
+                                  className={`inline-flex items-center rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
+                                    isSelected
+                                      ? 'border-emerald-600 bg-emerald-50 text-emerald-700 dark:border-emerald-500/50 dark:bg-emerald-900/30 dark:text-emerald-300'
+                                      : 'border-neutral-200 bg-white/80 text-neutral-600 hover:border-neutral-300 hover:bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-950/80 dark:text-neutral-400 dark:hover:border-neutral-600'
+                                  }`}
+                                >
+                                  {pack.name}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+                {fieldErrors.packageSelections && <p className="absolute bottom-0 left-0 text-[11px] font-medium text-red-500">{fieldErrors.packageSelections}</p>}
+              </div>
+
+              <div className="relative pb-5">
+                <label className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-neutral-600 dark:text-neutral-300">
+                  <Hash size={14} /> Quantity
+                </label>
+                <input className="w-1/3 min-w-[120px] rounded-xl border border-neutral-300 bg-white/80 py-2.5 px-3.5 text-sm text-neutral-900 outline-none transition focus:border-neutral-900 focus:ring-2 focus:ring-black/10 dark:border-neutral-700 dark:bg-neutral-950/80 dark:text-white dark:focus:border-white dark:focus:ring-white/15" type="number" min={1} value={form.quantity} onChange={(e) => {
+                  setForm({ ...form, quantity: Number(e.target.value) });
+                  setFieldErrors((prev) => ({ ...prev, quantity: undefined }));
+                }} />
+                {fieldErrors.quantity && <p className="absolute bottom-0 left-0 text-[11px] font-medium text-red-500">{fieldErrors.quantity}</p>}
+              </div>
+            </div>
+
+            <div className="pt-4">
+              <button className="relative w-full overflow-hidden rounded-xl bg-neutral-900 p-[1px] shadow-md transition-all hover:-translate-y-0.5 hover:shadow-lg disabled:cursor-not-allowed disabled:opacity-70 dark:bg-white" disabled={saving} type="submit">
+                <span className="absolute inset-0 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 opacity-20 dark:opacity-40" />
+                <div className="relative flex w-full items-center justify-center gap-2 rounded-[11px] bg-neutral-900 px-4 py-3.5 text-sm font-bold tracking-wide text-white transition-colors dark:bg-white dark:text-neutral-950">
+                  {saving ? (
+                    <><Loader size={16} className="animate-spin" /> Saving...</>
+                  ) : (
+                    'Create Order & Initiate'
+                  )}
+                </div>
+              </button>
+              {error && <div className="mt-3 text-center text-sm font-medium text-red-500">{error}</div>}
+            </div>
           </div>
         </form>
       </div>

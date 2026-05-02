@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { ReactNode, useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
 import { ReferenceOption } from '@/lib/types';
 
@@ -9,9 +9,10 @@ interface Props {
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
+  icon?: ReactNode;
 }
 
-export default function ReferenceAutocomplete({ label, value, onChange, placeholder }: Props) {
+export default function ReferenceAutocomplete({ label, value, onChange, placeholder, icon }: Props) {
   const [options, setOptions] = useState<ReferenceOption[]>([]);
   const [open, setOpen] = useState(false);
 
@@ -34,10 +35,15 @@ export default function ReferenceAutocomplete({ label, value, onChange, placehol
 
   return (
     <div>
-      <label className="mb-2 block text-xs uppercase tracking-wide text-neutral-500 dark:text-neutral-300">{label}</label>
+      <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-neutral-600 dark:text-neutral-300">{label}</label>
       <div className="relative">
+        {icon && (
+          <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5 text-neutral-400">
+            {icon}
+          </div>
+        )}
         <input
-          className="w-full rounded-xl border border-neutral-300 bg-white/80 px-3.5 py-3 text-sm text-neutral-900 outline-none transition focus:border-neutral-900 focus:ring-2 focus:ring-black/10 dark:border-neutral-700 dark:bg-neutral-900/80 dark:text-white dark:focus:border-white dark:focus:ring-white/15"
+          className={`w-full rounded-xl border border-neutral-300 bg-white/80 py-3 pr-3.5 text-sm text-neutral-900 outline-none transition focus:border-neutral-900 focus:ring-2 focus:ring-black/10 dark:border-neutral-700 dark:bg-neutral-950/80 dark:text-white dark:focus:border-white dark:focus:ring-white/15 ${icon ? 'pl-10' : 'pl-3.5'}`}
           value={value}
           placeholder={placeholder || 'Search or type reference'}
           onChange={(e) => {
