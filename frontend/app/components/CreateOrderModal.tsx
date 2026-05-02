@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { apiFetch } from '@/lib/api';
 import { Order, Product } from '@/lib/types';
-import { ChevronDown, ChevronUp } from 'lucide-react';
+import { ChevronDown, ChevronUp, Loader } from 'lucide-react';
 import ReferenceAutocomplete from './ReferenceAutocomplete';
 
 interface Props {
@@ -53,7 +53,7 @@ type PlatformLookupResponse = PlatformLookupItem[] | {
 };
 
 type FieldErrors = Partial<Record<
-  'customer_name' | 'url' | 'products' | 'package_type' | 'quantity' | 'reference_number' | 'previous_reference',
+  'customer_name' | 'url' | 'products' | 'packageSelections' | 'quantity' | 'reference_number' | 'previous_reference',
   string
 >>;
 
@@ -85,40 +85,6 @@ const defaultPaymentMediumOptions = [
   { value: 'mobile_banking', label: 'Mobile Banking' },
   { value: 'pos', label: 'POS' },
 ];
-
-
-
-const extractArrayFromPayload = <T,>(payload: T[] | Record<string, unknown>, preferredKeys: string[] = []) => {
-  if (Array.isArray(payload)) return payload;
-
-  const keyOrder = [...preferredKeys, 'results', 'data', 'items'];
-  for (const key of keyOrder) {
-    const candidate = payload[key];
-    if (Array.isArray(candidate)) return candidate;
-  }
-
-  return [];
-};
-
-const normalizePackagePayload = (payload: Record<string, unknown> | Array<unknown>): PackageOption[] => {
-  const rawPackages = extractArrayFromPayload(payload, ['package_types', 'packages']);
-
-  return rawPackages
-    .map((entry) => {
-      const pack = entry as Record<string, unknown>;
-      const idValue = pack.id ?? pack.value;
-      const nameValue = pack.name ?? pack.package_name ?? pack.title ?? pack.label;
-      if (idValue === undefined || nameValue === undefined || nameValue === null) {
-        return null;
-      }
-
-      const id = Number(idValue);
-      if (Number.isNaN(id)) return null;
-
-      return { id, name: String(nameValue) };
-    })
-    .filter((item): item is PackageOption => item !== null);
-};
 
 
 
@@ -244,13 +210,15 @@ const fetchPlatformCatalogWithFallback = async (endpoints: string[]): Promise<Pl
   return null;
 };
 
+type PackageSelection = { productId: number; packageId: number };
+
 export default function CreateOrderModal({onClose, onCreated }: Props) {
   const [form, setForm] = useState({
     customer_name: '',
     url: '',
     platform_type: 'facebook',
     products: [] as string[],
-    package_type: '',
+    packageSelections: [] as PackageSelection[],
     quantity: 1,
     payment_method: 'bkash',
     payment_medium: 'online',
@@ -262,9 +230,11 @@ export default function CreateOrderModal({onClose, onCreated }: Props) {
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [saving, setSaving] = useState(false);
   const [isProductMenuOpen, setIsProductMenuOpen] = useState(false);
+  const [isLoadingPlatforms, setIsLoadingPlatforms] = useState(true);
+  const [isLoadingProducts, setIsLoadingProducts] = useState(false);
+  const [isLoadingPackages, setIsLoadingPackages] = useState(false);
   const productMenuRef = useRef<HTMLDivElement | null>(null);
   const [availableProducts, setAvailableProducts] = useState<Product[]>([]);
-  const [apiPackages, setApiPackages] = useState<PackageOption[]>([]);
   const [platformOptions, setPlatformOptions] = useState(defaultPlatformOptions);
   const [platformCatalog, setPlatformCatalog] = useState<Array<{ value: string; label: string; products: Product[] }>>([]);
   const [paymentMethodOptions, setPaymentMethodOptions] = useState(defaultPaymentMethodOptions);
@@ -280,22 +250,30 @@ export default function CreateOrderModal({onClose, onCreated }: Props) {
     [form.products, availableProducts],
   );
 
-  const mergedPackages = useMemo(() => {
-    const mergedPackages = new Map<number, { id: number; name: string }>();
-    selectedProducts.forEach((product) => {
-      product.packages.forEach((pack) => {
-        if (!mergedPackages.has(pack.id)) {
-          mergedPackages.set(pack.id, pack);
-        }
-      });
-    });
-    return Array.from(mergedPackages.values());
-  }, [selectedProducts]);
+  const togglePackageSelection = (productId: number, packageId: number) => {
+    setForm((prev) => {
+      const exists = prev.packageSelections.some(
+        (sel) => sel.productId === productId && sel.packageId === packageId,
+      );
+      const nextSelections = exists
+        ? prev.packageSelections.filter(
+            (sel) => !(sel.productId === productId && sel.packageId === packageId),
+          )
+        : [...prev.packageSelections, { productId, packageId }];
 
-  const packages = useMemo(() => {
-    if (apiPackages.length > 0) return apiPackages;
-    return mergedPackages;
-  }, [apiPackages, mergedPackages]);
+      return {
+        ...prev,
+        packageSelections: nextSelections,
+      };
+    });
+    setFieldErrors((prev) => ({ ...prev, packageSelections: undefined }));
+  };
+
+  const getSelectedPackagesForProduct = (productId: number): number[] => {
+    return form.packageSelections
+      .filter((sel) => sel.productId === productId)
+      .map((sel) => sel.packageId);
+  };
 
   const toggleProduct = (productName: string) => {
     setForm((prev) => {
@@ -304,13 +282,20 @@ export default function CreateOrderModal({onClose, onCreated }: Props) {
         ? prev.products.filter((name) => name !== productName)
         : [...prev.products, productName];
 
+      const nextPackageSelections = exists
+        ? prev.packageSelections.filter((sel) => {
+            const product = availableProducts.find((p) => p.name === productName);
+            return product ? sel.productId !== product.id : true;
+          })
+        : prev.packageSelections;
+
       return {
         ...prev,
         products: nextProducts,
-        package_type: '',
+        packageSelections: nextPackageSelections,
       };
     });
-    setFieldErrors((prev) => ({ ...prev, products: undefined, package_type: undefined }));
+    setFieldErrors((prev) => ({ ...prev, products: undefined, packageSelections: undefined }));
   };
 
   const validateForm = (): FieldErrors => {
@@ -332,7 +317,7 @@ export default function CreateOrderModal({onClose, onCreated }: Props) {
     }
 
     if (selectedProducts.length === 0) nextErrors.products = 'Please select at least one product.';
-    if (!form.package_type) nextErrors.package_type = 'Please select a package type.';
+    if (form.packageSelections.length === 0) nextErrors.packageSelections = 'Please select at least one package.';
     if (!Number(form.quantity) || Number(form.quantity) < 1) nextErrors.quantity = 'Quantity must be at least 1.';
     if (!form.reference_number.trim()) nextErrors.reference_number = 'Reference number is required.';
 
@@ -347,6 +332,7 @@ export default function CreateOrderModal({onClose, onCreated }: Props) {
     let isMounted = true;
 
     const loadLookups = async () => {
+      setIsLoadingPlatforms(true);
       const [platformPayload, paymentMethodOptionsFromApi, customerStatusOptionsFromApi, paymentMediumOptionsFromApi] = await Promise.all([
         fetchPlatformCatalogWithFallback(['/lookups/platform-types/', '/platform-types/', '/lookups/']),
         fetchLookupWithFallback(['/lookups/payment-methods/', '/payment-methods/', '/lookups/'], ['payment_methods']),
@@ -395,6 +381,7 @@ export default function CreateOrderModal({onClose, onCreated }: Props) {
             : { ...prev, payment_medium: paymentMediumOptionsFromApi[0].value }
         ));
       }
+      setIsLoadingPlatforms(false);
     };
 
     loadLookups();
@@ -405,68 +392,23 @@ export default function CreateOrderModal({onClose, onCreated }: Props) {
   }, []);
 
   useEffect(() => {
+    setIsLoadingProducts(true);
     const selectedPlatform = platformCatalog.find((platform) => platform.value === form.platform_type);
     setAvailableProducts(selectedPlatform?.products ?? []);
     setForm((prev) => ({
       ...prev,
       products: [],
-      package_type: '',
+      packageSelections: [],
     }));
-    setApiPackages([]);
+    setIsLoadingProducts(false);
   }, [form.platform_type, platformCatalog]);
 
   useEffect(() => {
-    let isMounted = true;
-
-    const loadPackages = async () => {
-      if (selectedProducts.length === 0) {
-        setApiPackages([]);
-        return;
-      }
-
-      const packageMap = new Map<number, PackageOption>();
-      const fallbackSources = [
-        (productId: number) => `/package-types/?product=${productId}`,
-        (productId: number) => `/packages/?product=${productId}`,
-        (productId: number) => `/product-packages/?product=${productId}`,
-      ];
-
-      for (const product of selectedProducts) {
-        let loadedForProduct = false;
-        const allowedPackageIds = new Set(product.packages.map((pack) => pack.id));
-
-        for (const makePath of fallbackSources) {
-          try {
-            const payload = await apiFetch<Record<string, unknown> | Array<unknown>>(makePath(product.id));
-            const normalized = normalizePackagePayload(payload);
-            const filteredPackages = allowedPackageIds.size > 0
-              ? normalized.filter((pack) => allowedPackageIds.has(pack.id))
-              : normalized;
-
-            if (filteredPackages.length > 0) {
-              filteredPackages.forEach((pack) => packageMap.set(pack.id, pack));
-              loadedForProduct = true;
-              break;
-            }
-          } catch {
-            // Try next package endpoint.
-          }
-        }
-
-        if (!loadedForProduct) {
-          product.packages.forEach((pack) => packageMap.set(pack.id, pack));
-        }
-      }
-
-      if (!isMounted) return;
-      setApiPackages(Array.from(packageMap.values()));
+    setIsLoadingPackages(true);
+    const handleLoadPackages = () => {
+      setTimeout(() => setIsLoadingPackages(false), 300);
     };
-
-    loadPackages();
-
-    return () => {
-      isMounted = false;
-    };
+    handleLoadPackages();
   }, [selectedProducts]);
 
   useEffect(() => {
@@ -498,13 +440,13 @@ export default function CreateOrderModal({onClose, onCreated }: Props) {
     setSaving(true);
     try {
       const createdOrders = await Promise.all(
-        selectedProducts.map((product) => {
+        form.packageSelections.map((selection) => {
           const payload = {
             customer_name: form.customer_name,
             url: form.url,
             platform_type: form.platform_type,
-            product: Number(product.id),
-            package_type: Number(form.package_type),
+            product: Number(selection.productId),
+            package_type: Number(selection.packageId),
             quantity: Number(form.quantity),
             payment_method: form.payment_method,
             payment_medium: form.payment_medium,
@@ -566,32 +508,40 @@ export default function CreateOrderModal({onClose, onCreated }: Props) {
 
           <div>
             <label className="mb-2 block text-xs uppercase tracking-wide text-neutral-500 dark:text-neutral-300">Platform Type</label>
-            <select className="w-full rounded-xl border border-neutral-300 bg-white/80 px-3.5 py-3 text-sm text-neutral-900 outline-none transition focus:border-neutral-900 focus:ring-2 focus:ring-black/10 dark:border-neutral-700 dark:bg-neutral-900/80 dark:text-white dark:focus:border-white dark:focus:ring-white/15" value={form.platform_type} onChange={(e) => setForm({ ...form, platform_type: e.target.value, products: [], package_type: '' })}>
-              {platformOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
+            <div className="relative">
+              <select disabled={isLoadingPlatforms} className="w-full rounded-xl border border-neutral-300 bg-white/80 px-3.5 py-3 text-sm text-neutral-900 outline-none transition focus:border-neutral-900 focus:ring-2 focus:ring-black/10 disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-900/80 dark:text-white dark:focus:border-white dark:focus:ring-white/15" value={form.platform_type} onChange={(e) => setForm({ ...form, platform_type: e.target.value, products: [], packageSelections: [] })}>
+                {platformOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              {isLoadingPlatforms && (
+                <div className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2">
+                  <Loader size={18} className="animate-spin text-neutral-600 dark:text-neutral-400" />
+                </div>
+              )}
+            </div>
           </div>
 
-          <div className="relative pb-5" ref={productMenuRef}>
+          <div className="relative pb-5 lg:col-span-2" ref={productMenuRef}>
             <label className="mb-2 block text-xs uppercase tracking-wide text-neutral-500 dark:text-neutral-300">Product Name</label>
             <div className="relative">
               <button
                 type="button"
+                disabled={isLoadingProducts}
                 onClick={() => setIsProductMenuOpen((prev) => !prev)}
-                className="flex w-full items-center justify-between rounded-xl border border-neutral-300 bg-white/80 px-3.5 py-3 text-left text-sm text-neutral-900 outline-none transition focus:border-neutral-900 focus:ring-2 focus:ring-black/10 dark:border-neutral-700 dark:bg-neutral-900/80 dark:text-white dark:focus:border-white dark:focus:ring-white/15"
+                className="flex w-full items-center justify-between rounded-xl border border-neutral-300 bg-white/80 px-3.5 py-3 text-left text-sm text-neutral-900 outline-none transition focus:border-neutral-900 focus:ring-2 focus:ring-black/10 disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-900/80 dark:text-white dark:focus:border-white dark:focus:ring-white/15"
               >
                 <span>
-                  {form.products.length > 0 ? `${form.products.length} product(s) selected` : 'Select products'}
+                  {isLoadingProducts ? 'Loading products...' : form.products.length > 0 ? `${form.products.length} product(s) selected` : 'Select products'}
                 </span>
                 <span className="text-neutral-500 dark:text-neutral-300">
-                  {isProductMenuOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                  {isLoadingProducts ? <Loader size={16} className="animate-spin" /> : isProductMenuOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                 </span>
               </button>
 
-              {isProductMenuOpen && (
+              {isProductMenuOpen && !isLoadingProducts && (
                 <div className="absolute z-20 mt-2 max-h-56 w-full overflow-auto rounded-xl border border-neutral-300 bg-white p-2 shadow-lg dark:border-neutral-700 dark:bg-neutral-900">
                   {availableProducts.map((product) => {
                     const checked = form.products.includes(product.name);
@@ -631,18 +581,73 @@ export default function CreateOrderModal({onClose, onCreated }: Props) {
             {fieldErrors.products && <p className="absolute bottom-0 left-0 text-xs text-red-600">{fieldErrors.products}</p>}
           </div>
 
-          <div className="relative pb-5">
-            <label className="mb-2 block text-xs uppercase tracking-wide text-neutral-500 dark:text-neutral-300">Package Type</label>
-            <select className="w-full rounded-xl border border-neutral-300 bg-white/80 px-3.5 py-3 text-sm text-neutral-900 outline-none transition focus:border-neutral-900 focus:ring-2 focus:ring-black/10 dark:border-neutral-700 dark:bg-neutral-900/80 dark:text-white dark:focus:border-white dark:focus:ring-white/15" required value={form.package_type} onChange={(e) => {
-              setForm({ ...form, package_type: e.target.value });
-              setFieldErrors((prev) => ({ ...prev, package_type: undefined }));
-            }}>
-              <option value="">Select package</option>
-              {packages.map((pack) => (
-                <option key={pack.id} value={pack.id}>{pack.name}</option>
-              ))}
-            </select>
-            {fieldErrors.package_type && <p className="absolute bottom-0 left-0 text-xs text-red-600">{fieldErrors.package_type}</p>}
+          <div className="relative pb-5 lg:col-span-2">
+            <label className="mb-2 block text-xs uppercase tracking-wide text-neutral-500 dark:text-neutral-300">Packages (Select for each Product)</label>
+            {isLoadingPackages ? (
+              <div className="flex items-center justify-center rounded-lg border border-neutral-300 bg-neutral-50 p-8 dark:border-neutral-700 dark:bg-neutral-900/50">
+                <Loader size={20} className="animate-spin text-neutral-600 dark:text-neutral-400" />
+                <span className="ml-2 text-sm text-neutral-600 dark:text-neutral-400">Loading packages...</span>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {selectedProducts.length === 0 ? (
+                  <p className="text-sm text-neutral-500 dark:text-neutral-300">Select products first to choose packages.</p>
+                ) : (
+                  selectedProducts.map((product) => (
+                    <div key={product.id} className="rounded-lg border border-neutral-300 bg-neutral-50 p-3 dark:border-neutral-700 dark:bg-neutral-900/50">
+                      <h4 className="mb-2 text-sm font-semibold text-neutral-900 dark:text-white">{product.name}</h4>
+                      <div className="space-y-2">
+                        {product.packages.map((pack) => {
+                          const isSelected = getSelectedPackagesForProduct(product.id).includes(pack.id);
+                          return (
+                            <label key={pack.id} className="flex cursor-pointer items-center gap-2">
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={() => togglePackageSelection(product.id, pack.id)}
+                                className="h-4 w-4"
+                              />
+                              <span className="text-sm text-neutral-700 dark:text-neutral-300">{pack.name}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+
+            {form.packageSelections.length > 0 && (
+              <div className="mt-3 space-y-2">
+                <p className="text-xs font-semibold text-neutral-600 dark:text-neutral-400">Selected Packages:</p>
+                <div className="flex flex-wrap gap-2">
+                  {selectedProducts.map((product) => {
+                    const productSelections = getSelectedPackagesForProduct(product.id);
+                    return productSelections.map((packageId) => {
+                      const pack = product.packages.find((p) => p.id === packageId);
+                      return (
+                        <span
+                          key={`${product.id}-${packageId}`}
+                          className="inline-flex items-center gap-1 rounded-full border border-neutral-300 bg-neutral-100 px-2 py-1 text-xs text-neutral-700 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-300"
+                        >
+                          {product.name} - {pack?.name}
+                          <button
+                            type="button"
+                            onClick={() => togglePackageSelection(product.id, packageId)}
+                            className="text-neutral-500 hover:text-neutral-900 dark:hover:text-white"
+                            aria-label={`Remove ${product.name} - ${pack?.name}`}
+                          >
+                            ×
+                          </button>
+                        </span>
+                      );
+                    });
+                  })}
+                </div>
+              </div>
+            )}
+            {fieldErrors.packageSelections && <p className="mt-2 text-xs text-red-600">{fieldErrors.packageSelections}</p>}
           </div>
 
           <div className="relative pb-5">
