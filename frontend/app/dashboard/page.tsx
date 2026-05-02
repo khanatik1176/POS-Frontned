@@ -174,6 +174,39 @@ const getOrderItemsSummary = (order: Order) => {
   };
 };
 
+const getProductsWithPackages = (order: Order) => {
+  const items = order.items || [];
+  if (items.length === 0) {
+    return order.product_name
+      ? [{
+          productName: order.product_name,
+          packageNames: order.package_type_name ? [order.package_type_name] : [],
+          quantity: order.quantity || 0,
+        }]
+      : [];
+  }
+
+  const grouped = new Map<number, { productName: string; packages: Set<string>; totalQty: number }>();
+  items.forEach((item) => {
+    if (!grouped.has(item.product)) {
+      grouped.set(item.product, {
+        productName: item.product_name,
+        packages: new Set(),
+        totalQty: 0,
+      });
+    }
+    const group = grouped.get(item.product)!;
+    group.packages.add(item.package_type_name);
+    group.totalQty += item.quantity || 0;
+  });
+
+  return Array.from(grouped.values()).map((group) => ({
+    productName: group.productName,
+    packageNames: Array.from(group.packages),
+    quantity: group.totalQty,
+  }));
+};
+
 const formatEntryTime = (value: string) => {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
@@ -640,8 +673,25 @@ export default function DashboardPage() {
                             </a>
                           </div>
                           </td>
-                          <td className="px-3 py-3 align-middle">{getOrderItemsSummary(order).productNames.join(', ') || '—'}</td>
-                          <td className="px-3 py-3 align-middle">{getOrderItemsSummary(order).packageNames.join(', ') || '—'}</td>
+                          <td className="px-3 py-3 align-middle">
+                            <div className="space-y-1">
+                              {getProductsWithPackages(order).map((prod, idx) => (
+                                <div key={idx} className="text-sm">
+                                  <div className="font-medium text-neutral-900 dark:text-white">{prod.productName}</div>
+                                  <div className="text-xs text-neutral-500 dark:text-neutral-400">{prod.packageNames.join(', ')}</div>
+                                </div>
+                              ))}
+                            </div>
+                          </td>
+                          <td className="px-3 py-3 align-middle">
+                            <div className="space-y-1">
+                              {getProductsWithPackages(order).map((prod, idx) => (
+                                <div key={idx} className="text-sm text-neutral-600 dark:text-neutral-300">
+                                  {prod.packageNames.join(', ')}
+                                </div>
+                              ))}
+                            </div>
+                          </td>
                           <td className="whitespace-nowrap px-3 py-3 align-middle">{getOrderItemsSummary(order).quantity || '—'}</td>
                           <td className="px-3 py-3 align-middle"><div>{getPaymentMethodLabel(order)}</div><div className="text-xs text-neutral-500 dark:text-neutral-300">{getPaymentMediumLabel(order)}</div></td>
                           <td className="whitespace-nowrap px-3 py-3 align-middle">{getPrimaryReference(order)}</td>
@@ -707,8 +757,17 @@ export default function DashboardPage() {
                     </div>
                     <div className="grid grid-cols-1 gap-2 text-xs sm:grid-cols-2">
                       <div><span className="text-neutral-500 dark:text-neutral-300">Platform:</span> {getPlatformLabel(order)}</div>
-                      <div><span className="text-neutral-500 dark:text-neutral-300">Product:</span> {getOrderItemsSummary(order).productNames.join(', ') || '—'}</div>
-                      <div><span className="text-neutral-500 dark:text-neutral-300">Package:</span> {getOrderItemsSummary(order).packageNames.join(', ') || '—'}</div>
+                      <div>
+                        <span className="text-neutral-500 dark:text-neutral-300">Products & Packages:</span>
+                        <div className="mt-1 space-y-1">
+                          {getProductsWithPackages(order).map((prod, idx) => (
+                            <div key={idx} className="ml-2 text-xs">
+                              <div className="font-medium text-neutral-900 dark:text-white">{prod.productName}</div>
+                              <div className="text-neutral-500 dark:text-neutral-400">{prod.packageNames.join(', ')}</div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
                       <div><span className="text-neutral-500 dark:text-neutral-300">Qty:</span> {getOrderItemsSummary(order).quantity || '—'}</div>
                       <div><span className="text-neutral-500 dark:text-neutral-300">Payment:</span> {getPaymentMethodLabel(order)}</div>
                       <div><span className="text-neutral-500 dark:text-neutral-300">Medium:</span> {getPaymentMediumLabel(order)}</div>
