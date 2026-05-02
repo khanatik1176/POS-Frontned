@@ -634,7 +634,7 @@ export default function DashboardPage() {
                   <table className="w-full min-w-[1120px] text-sm xl:min-w-[1240px]">
                     <thead className="sticky top-0 z-10 bg-neutral-100/90 backdrop-blur-sm dark:bg-neutral-900/90">
                       <tr className="border-b border-neutral-300 dark:border-neutral-700">
-                        {['Customer', 'Platform', 'Product', 'Package', 'Qty', 'Payment', 'Primary Ref', 'Previous Ref', 'New Ref', 'Status', 'Customer Status', 'Entry Time', 'Actions'].map((head) => (
+                        {['Customer', 'Platform', 'Products & Packages', 'Qty', 'Payment', 'Primary Ref', 'Previous Ref', 'New Ref', 'Status', 'Customer Status', 'Entry Time', 'Actions'].map((head) => (
                           <th key={head} className="h-11 px-3 text-left text-[11px] font-medium uppercase tracking-[0.06em] text-neutral-600 dark:text-neutral-300">{head}</th>
                         ))}
                       </tr>
@@ -683,15 +683,6 @@ export default function DashboardPage() {
                               ))}
                             </div>
                           </td>
-                          <td className="px-3 py-3 align-middle">
-                            <div className="space-y-1">
-                              {getProductsWithPackages(order).map((prod, idx) => (
-                                <div key={idx} className="text-sm text-neutral-600 dark:text-neutral-300">
-                                  {prod.packageNames.join(', ')}
-                                </div>
-                              ))}
-                            </div>
-                          </td>
                           <td className="whitespace-nowrap px-3 py-3 align-middle">{getOrderItemsSummary(order).quantity || '—'}</td>
                           <td className="px-3 py-3 align-middle"><div>{getPaymentMethodLabel(order)}</div><div className="text-xs text-neutral-500 dark:text-neutral-300">{getPaymentMediumLabel(order)}</div></td>
                           <td className="whitespace-nowrap px-3 py-3 align-middle">{getPrimaryReference(order)}</td>
@@ -718,7 +709,7 @@ export default function DashboardPage() {
                       ))}
                       {orders.length === 0 && (
                         <tr>
-                          <td colSpan={13} className="px-3 py-6 text-center text-sm text-neutral-500 dark:text-neutral-300">No orders found.</td>
+                          <td colSpan={12} className="px-3 py-6 text-center text-sm text-neutral-500 dark:text-neutral-300">No orders found.</td>
                         </tr>
                       )}
                     </tbody>

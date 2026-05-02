@@ -439,9 +439,17 @@ export default function CreateOrderModal({onClose, onCreated }: Props) {
 
     setSaving(true);
     try {
-      const items = form.packageSelections.map((selection) => ({
-        product: Number(selection.productId),
-        package_types: Number(selection.packageId),
+      const itemsMap = new Map<number, number[]>();
+      form.packageSelections.forEach((selection) => {
+        const productId = Number(selection.productId);
+        const packageId = Number(selection.packageId);
+        if (!itemsMap.has(productId)) itemsMap.set(productId, []);
+        itemsMap.get(productId)!.push(packageId);
+      });
+
+      const items = Array.from(itemsMap.entries()).map(([productId, packageIds]) => ({
+        product: productId,
+        package_types: packageIds,
         quantity: Number(form.quantity),
       }));
 
