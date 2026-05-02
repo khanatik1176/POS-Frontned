@@ -439,30 +439,31 @@ export default function CreateOrderModal({onClose, onCreated }: Props) {
 
     setSaving(true);
     try {
-      const createdOrders = await Promise.all(
-        form.packageSelections.map((selection) => {
-          const payload = {
-            customer_name: form.customer_name,
-            url: form.url,
-            platform_type: form.platform_type,
-            product: Number(selection.productId),
-            package_type: Number(selection.packageId),
-            quantity: Number(form.quantity),
-            payment_method: form.payment_method,
-            payment_medium: form.payment_medium,
-            reference_number: form.reference_number,
-            customer_status: form.customer_status,
-            previous_reference: form.previous_reference,
-          };
+      const items = form.packageSelections.map((selection) => ({
+        product: Number(selection.productId),
+        package_type: Number(selection.packageId),
+        quantity: Number(form.quantity),
+      }));
 
-          return apiFetch<Order>('/orders/', {
-            method: 'POST',
-            body: JSON.stringify(payload),
-          });
-        }),
-      );
+      const payload = {
+        customer_name: form.customer_name,
+        url: form.url,
+        platform_type: form.platform_type,
+        quantity: Number(form.quantity),
+        payment_method: form.payment_method,
+        payment_medium: form.payment_medium,
+        reference_number: form.reference_number,
+        customer_status: form.customer_status,
+        previous_reference: form.previous_reference,
+        items,
+      };
 
-      createdOrders.forEach((order) => onCreated(order));
+      const createdOrder = await apiFetch<Order>('/orders/', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+
+      onCreated(createdOrder);
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create order');
