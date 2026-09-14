@@ -7,11 +7,11 @@ import { TableSkeleton } from '../../components/Skeleton';
 import { usePagination } from '@/lib/usePagination';
 import { exportToExcel } from '@/lib/exportExcel';
 import { getInvoiceRecord, listInvoiceRecords, markInvoiceRecordSeen } from '@/lib/invoicesApi';
-import { FieldTemplateItem, InvoiceRecord } from '@/lib/invoiceTypes';
+import { FieldTemplatesByType, InvoiceRecord } from '@/lib/invoiceTypes';
 import InvoiceRecordDetailModal from './InvoiceRecordDetailModal';
 
 interface Props {
-  fieldTemplate: FieldTemplateItem[];
+  fieldTemplates: FieldTemplatesByType;
   canExport?: boolean;
 }
 
@@ -19,7 +19,31 @@ export interface InvoiceRecordsPanelHandle {
   refresh: () => void;
 }
 
-const InvoiceRecordsPanel = forwardRef<InvoiceRecordsPanelHandle, Props>(({ fieldTemplate, canExport = true }, ref) => {
+const RECORD_TYPE_LABEL: Record<string, string> = {
+  invoice: 'Invoice',
+  mobile_money_receipt: 'Mobile Money',
+};
+
+// Vendor/invoice-number for invoices, recipient-name/transaction-id for
+// mobile-money receipts - each record type has its own "reference" and "id"
+// concept, so the listing shows whichever applies to that row.
+function referenceFor(record: InvoiceRecord): string {
+  return record.fields.vendor_name?.value || record.fields.reference_name?.value || '';
+}
+
+function identifierFor(record: InvoiceRecord): string {
+  return record.fields.invoice_number?.value || record.fields.transaction_id?.value || '';
+}
+
+function dateFor(record: InvoiceRecord): string {
+  return record.fields.invoice_date?.value || record.fields.transaction_datetime?.value || '';
+}
+
+function totalFor(record: InvoiceRecord): string {
+  return record.fields.total_amount?.value || record.fields.amount?.value || '';
+}
+
+const InvoiceRecordsPanel = forwardRef<InvoiceRecordsPanelHandle, Props>(({ fieldTemplates, canExport = true }, ref) => {
   const [records, setRecords] = useState<InvoiceRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedRecord, setSelectedRecord] = useState<InvoiceRecord | null>(null);
@@ -56,8 +80,9 @@ const InvoiceRecordsPanel = forwardRef<InvoiceRecordsPanelHandle, Props>(({ fiel
       'Records',
       [
         { header: '#', key: 'id', width: 8 },
-        { header: 'Vendor', key: 'vendor', width: 24 },
-        { header: 'Invoice #', key: 'invoiceNumber', width: 18 },
+        { header: 'Type', key: 'type', width: 16 },
+        { header: 'Reference', key: 'reference', width: 24 },
+        { header: 'ID', key: 'identifier', width: 18 },
         { header: 'Date', key: 'date', width: 14 },
         { header: 'Total', key: 'total', width: 14 },
         { header: 'Status', key: 'status', width: 20 },
@@ -65,10 +90,11 @@ const InvoiceRecordsPanel = forwardRef<InvoiceRecordsPanelHandle, Props>(({ fiel
       ],
       records.map((record) => ({
         id: record.id,
-        vendor: record.fields.vendor_name?.value || '',
-        invoiceNumber: record.fields.invoice_number?.value || '',
-        date: record.fields.invoice_date?.value || '',
-        total: record.fields.total_amount?.value || '',
+        type: RECORD_TYPE_LABEL[record.record_type] || record.record_type,
+        reference: referenceFor(record),
+        identifier: identifierFor(record),
+        date: dateFor(record),
+        total: totalFor(record),
         status: !record.notified ? 'Updated' : record.has_pending_server_review ? 'Server review pending' : 'Complete',
         submitted: new Date(record.created_at).toLocaleString(),
       })),
@@ -111,7 +137,7 @@ const InvoiceRecordsPanel = forwardRef<InvoiceRecordsPanelHandle, Props>(({ fiel
             <table className="w-full min-w-[720px] text-sm">
               <thead className="bg-neutral-50/80 dark:bg-neutral-900/50">
                 <tr className="border-b border-neutral-200/60 dark:border-neutral-800/60">
-                  {['#', 'Vendor', 'Invoice #', 'Date', 'Total', 'Status', 'Submitted', ''].map((head) => (
+                  {['#', 'Type', 'Reference', 'ID', 'Date', 'Total', 'Status', 'Submitted', ''].map((head) => (
                     <th key={head} className="whitespace-nowrap px-4 py-3 text-left text-[11px] font-bold uppercase tracking-widest text-neutral-500 dark:text-neutral-400">
                       {head}
                     </th>
@@ -122,17 +148,20 @@ const InvoiceRecordsPanel = forwardRef<InvoiceRecordsPanelHandle, Props>(({ fiel
                 {pagedRecords.map((record) => (
                   <tr key={record.id} className="border-b border-neutral-100/80 transition-colors last:border-b-0 hover:bg-neutral-50/80 dark:border-neutral-800/40 dark:hover:bg-neutral-900/40">
                     <td className="whitespace-nowrap px-4 py-3 font-mono text-xs text-neutral-500">#{record.id}</td>
+                    <td className="whitespace-nowrap px-4 py-3 text-neutral-600 dark:text-neutral-300">
+                      {RECORD_TYPE_LABEL[record.record_type] || record.record_type}
+                    </td>
                     <td className="max-w-[180px] truncate px-4 py-3 font-medium text-neutral-900 dark:text-white">
-                      {record.fields.vendor_name?.value || '—'}
+                      {referenceFor(record) || '—'}
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 text-neutral-600 dark:text-neutral-300">
-                      {record.fields.invoice_number?.value || '—'}
+                      {identifierFor(record) || '—'}
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 text-neutral-600 dark:text-neutral-300">
-                      {record.fields.invoice_date?.value || '—'}
+                      {dateFor(record) || '—'}
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 font-medium text-neutral-900 dark:text-white">
-                      {record.fields.total_amount?.value || '—'}
+                      {totalFor(record) || '—'}
                     </td>
                     <td className="whitespace-nowrap px-4 py-3">
                       {!record.notified ? (
@@ -174,7 +203,7 @@ const InvoiceRecordsPanel = forwardRef<InvoiceRecordsPanelHandle, Props>(({ fiel
       )}
 
       {selectedRecord && (
-        <InvoiceRecordDetailModal record={selectedRecord} fieldTemplate={fieldTemplate} onClose={() => setSelectedRecord(null)} />
+        <InvoiceRecordDetailModal record={selectedRecord} fieldTemplates={fieldTemplates} onClose={() => setSelectedRecord(null)} />
       )}
     </div>
   );

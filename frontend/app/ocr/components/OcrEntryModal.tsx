@@ -1,59 +1,82 @@
 'use client';
 
-import { useMemo, useState } from 'react';
-import { CheckCircle2, Plus, Trash2, X } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { CheckCircle2, X } from 'lucide-react';
 import { Skeleton } from '../../components/Skeleton';
 import OcrImageUploader, { UploadedImage } from './OcrImageUploader';
 import { submitInvoiceRecord } from '@/lib/invoicesApi';
-import { ExtractedField } from '@/lib/ocrFieldMapping';
-import { CONFIDENCE_THRESHOLD } from '@/lib/ocrConfig';
-import { FieldTemplateItem, FieldValue, LineItem } from '@/lib/invoiceTypes';
+import {
+  ExtractedField,
+  MOBILE_MONEY_FIELD_TEMPLATE,
+  extractFields as extractMobileMoneyFields,
+  mergeExtractedFields,
+} from '@/lib/mobileMoneyFieldMapping';
+import { FieldTemplatesByType, FieldValue } from '@/lib/invoiceTypes';
+
+const RECORD_TYPE = 'mobile_money_receipt' as const;
 
 const emptyField = (): FieldValue => ({ value: '', origin: 'empty', confidence: null });
-const emptyLineItem = (): LineItem => ({ description: '', quantity: '', unit_price: '', amount: '', origin: 'empty' });
 
 interface Props {
-  fieldTemplate: FieldTemplateItem[];
+  fieldTemplates: FieldTemplatesByType;
   templateLoading: boolean;
   onClose: () => void;
   onSubmitted: () => void;
 }
 
-export default function OcrEntryModal({ fieldTemplate, templateLoading, onClose, onSubmitted }: Props) {
+export default function OcrEntryModal({ fieldTemplates, templateLoading, onClose, onSubmitted }: Props) {
+  // Fall back to the hardcoded template so the form still renders if the
+  // API template request fails or returns an empty mobile-money list.
+  const fieldTemplate =
+    fieldTemplates[RECORD_TYPE]?.length > 0
+      ? fieldTemplates[RECORD_TYPE]
+      : MOBILE_MONEY_FIELD_TEMPLATE;
+
   const [fieldValues, setFieldValues] = useState<Record<string, FieldValue>>(() =>
     Object.fromEntries(fieldTemplate.map((item) => [item.key, emptyField()])),
   );
-  const [lineItems, setLineItems] = useState<LineItem[]>([emptyLineItem()]);
   const [images, setImages] = useState<UploadedImage[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    setFieldValues((current) =>
+      Object.fromEntries(fieldTemplate.map((item) => [item.key, current[item.key] || emptyField()])),
+    );
+    // Only re-sync when the template key set changes (API load / fallback).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fieldTemplate.map((item) => item.key).join(',')]);
+
+  const blankFields = () =>
+    Object.fromEntries(fieldTemplate.map((item) => [item.key, emptyField()]));
 
   const handleFieldChange = (key: string, value: string) => {
     setFieldValues((current) => ({ ...current, [key]: { value, origin: value ? 'manual' : 'empty', confidence: null } }));
   };
 
+  // A new screenshot is a new receipt, so clear what the previous one filled
+  // in - otherwise its values survive into the next record.
+  const handleImageSelected = () => setFieldValues(blankFields());
+
   const handleFieldsExtracted = (extracted: Record<string, ExtractedField>) => {
     setFieldValues((current) => {
-      const next = { ...current };
-      for (const [key, match] of Object.entries(extracted)) {
-        const existing = next[key];
-        if (!existing || existing.origin === 'manual') continue;
-        if (match.confidence < CONFIDENCE_THRESHOLD) continue;
-        if (existing.origin === 'auto' && (existing.confidence ?? 0) >= match.confidence) continue;
-        next[key] = { value: match.value, origin: 'auto', confidence: match.confidence };
+      const next: Record<string, FieldValue> = {};
+      for (const item of fieldTemplate) {
+        const existing = current[item.key];
+        if (existing?.origin === 'manual' && existing.value) {
+          next[item.key] = existing;
+          continue;
+        }
+        const match = extracted[item.key];
+        // Any regex-validated extraction is applied. Confidence was already
+        // boosted in the mapper; don't drop partial receipts on the threshold.
+        next[item.key] = match?.value
+          ? { value: match.value, origin: 'auto', confidence: match.confidence }
+          : emptyField();
       }
       return next;
     });
   };
-
-  const updateLineItem = (index: number, patch: Partial<LineItem>) => {
-    setLineItems((current) =>
-      current.map((item, i) => (i === index ? { ...item, ...patch, origin: 'manual' } : item)),
-    );
-  };
-
-  const addLineItem = () => setLineItems((current) => [...current, emptyLineItem()]);
-  const removeLineItem = (index: number) => setLineItems((current) => current.filter((_, i) => i !== index));
 
   const isProcessingImages = useMemo(() => images.some((img) => img.status === 'processing'), [images]);
 
@@ -67,17 +90,13 @@ export default function OcrEntryModal({ fieldTemplate, templateLoading, onClose,
         .map((img) => ({
           image_data: img.base64 as string,
           content_type: img.contentType,
-          // FR-6 / open question #2: an image still mid-processing at submit
-          // time is treated as unreadable-locally and escalated, rather than
-          // blocking submission.
           local_read_status: img.status === 'readable' ? ('ok' as const) : ('unreadable' as const),
         }));
 
-      const cleanedLineItems = lineItems.filter((item) => item.description || item.quantity || item.unit_price || item.amount);
-
       const outcome = await submitInvoiceRecord({
+        record_type: RECORD_TYPE,
         fields: fieldValues,
-        line_items: cleanedLineItems,
+        line_items: [],
         images: payloadImages,
       });
 
@@ -96,8 +115,8 @@ export default function OcrEntryModal({ fieldTemplate, templateLoading, onClose,
       <div className="my-2 max-h-[95vh] w-full max-w-[720px] overflow-auto rounded-[18px] border border-neutral-300 bg-white/95 p-4 shadow-[0_0_0_1px_rgba(0,0,0,0.08),0_24px_58px_-36px_rgba(0,0,0,0.25)] backdrop-blur-sm sm:my-0 md:p-6 dark:border-neutral-700 dark:bg-neutral-900/95 dark:shadow-[0_0_0_1px_rgba(255,255,255,0.08),0_24px_58px_-36px_rgba(255,255,255,0.12)]">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 className="mb-1 text-xl font-semibold tracking-tight">New Invoice Entry</h2>
-            <p className="text-sm text-neutral-500 dark:text-neutral-300">Scan a receipt and auto-fill the form on-device.</p>
+            <h2 className="mb-1 text-xl font-semibold tracking-tight">New Entry</h2>
+            <p className="text-sm text-neutral-500 dark:text-neutral-300">Scan a mobile money receipt and auto-fill the form on-device.</p>
           </div>
           <button
             type="button"
@@ -109,7 +128,7 @@ export default function OcrEntryModal({ fieldTemplate, templateLoading, onClose,
           </button>
         </div>
 
-        {templateLoading ? (
+        {templateLoading && fieldTemplates[RECORD_TYPE]?.length === 0 ? (
           <div className="grid gap-5">
             <Skeleton className="h-11 w-56 rounded-xl" />
             <div className="grid gap-3 sm:grid-cols-2">
@@ -126,7 +145,14 @@ export default function OcrEntryModal({ fieldTemplate, templateLoading, onClose,
               <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
                 1. Upload screenshots / photos
               </h3>
-              <OcrImageUploader images={images} onChange={setImages} onFieldsExtracted={handleFieldsExtracted} />
+              <OcrImageUploader
+                images={images}
+                onChange={setImages}
+                onFieldsExtracted={handleFieldsExtracted}
+                onImageSelected={handleImageSelected}
+                extractFields={extractMobileMoneyFields}
+                mergeExtractedFields={mergeExtractedFields}
+              />
             </section>
 
             <section>
@@ -155,57 +181,6 @@ export default function OcrEntryModal({ fieldTemplate, templateLoading, onClose,
                     </div>
                   );
                 })}
-              </div>
-            </section>
-
-            <section>
-              <div className="mb-2 flex items-center justify-between">
-                <h3 className="text-sm font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">3. Line items</h3>
-                <button
-                  type="button"
-                  onClick={addLineItem}
-                  className="inline-flex items-center gap-1 text-xs font-medium text-neutral-600 hover:text-neutral-900 dark:text-neutral-300 dark:hover:text-white"
-                >
-                  <Plus size={12} /> Add row
-                </button>
-              </div>
-              <div className="grid gap-2">
-                {lineItems.map((item, idx) => (
-                  <div key={idx} className="grid grid-cols-[1fr_70px_90px_90px_28px] gap-2">
-                    <input
-                      placeholder="Description"
-                      value={item.description}
-                      onChange={(e) => updateLineItem(idx, { description: e.target.value })}
-                      className="rounded-lg border border-neutral-300 bg-white/80 px-2.5 py-2 text-xs dark:border-neutral-700 dark:bg-neutral-900/80"
-                    />
-                    <input
-                      placeholder="Qty"
-                      value={item.quantity}
-                      onChange={(e) => updateLineItem(idx, { quantity: e.target.value })}
-                      className="rounded-lg border border-neutral-300 bg-white/80 px-2.5 py-2 text-xs dark:border-neutral-700 dark:bg-neutral-900/80"
-                    />
-                    <input
-                      placeholder="Unit price"
-                      value={item.unit_price}
-                      onChange={(e) => updateLineItem(idx, { unit_price: e.target.value })}
-                      className="rounded-lg border border-neutral-300 bg-white/80 px-2.5 py-2 text-xs dark:border-neutral-700 dark:bg-neutral-900/80"
-                    />
-                    <input
-                      placeholder="Amount"
-                      value={item.amount}
-                      onChange={(e) => updateLineItem(idx, { amount: e.target.value })}
-                      className="rounded-lg border border-neutral-300 bg-white/80 px-2.5 py-2 text-xs dark:border-neutral-700 dark:bg-neutral-900/80"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => removeLineItem(idx)}
-                      className="flex items-center justify-center text-neutral-400 hover:text-rose-600"
-                      aria-label="Remove row"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
-                ))}
               </div>
             </section>
 

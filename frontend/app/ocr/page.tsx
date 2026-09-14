@@ -7,15 +7,17 @@ import AppShell from '../components/AppShell';
 import RequirePermission from '../components/RequirePermission';
 import InvoiceRecordsPanel, { InvoiceRecordsPanelHandle } from './components/InvoiceRecordsPanel';
 import OcrEntryModal from './components/OcrEntryModal';
-import { fetchFieldTemplate } from '@/lib/invoicesApi';
+import { fetchFieldTemplates } from '@/lib/invoicesApi';
 import { registerServiceWorker } from '@/lib/offlineSync';
 import { usePermissions } from '@/lib/usePermissions';
-import { FieldTemplateItem } from '@/lib/invoiceTypes';
+import { FieldTemplatesByType } from '@/lib/invoiceTypes';
+
+const EMPTY_TEMPLATES: FieldTemplatesByType = { invoice: [], mobile_money_receipt: [] };
 
 export default function OcrPage() {
   const router = useRouter();
   const { can } = usePermissions();
-  const [fieldTemplate, setFieldTemplate] = useState<FieldTemplateItem[]>([]);
+  const [fieldTemplates, setFieldTemplates] = useState<FieldTemplatesByType>(EMPTY_TEMPLATES);
   const [templateLoading, setTemplateLoading] = useState(true);
   const [isOnline, setIsOnline] = useState(true);
   const [showEntryModal, setShowEntryModal] = useState(false);
@@ -40,8 +42,8 @@ export default function OcrPage() {
   }, [router]);
 
   useEffect(() => {
-    fetchFieldTemplate()
-      .then(setFieldTemplate)
+    fetchFieldTemplates()
+      .then(setFieldTemplates)
       .catch(() => {})
       .finally(() => setTemplateLoading(false));
   }, []);
@@ -72,15 +74,15 @@ export default function OcrPage() {
   );
 
   return (
-    <AppShell title="Invoice OCR" subtitle="Scan a receipt and auto-fill the form on-device." headerActions={headerActions}>
+    <AppShell title="Mobile Money OCR" subtitle="Scan a mobile money receipt and auto-fill the form on-device." headerActions={headerActions}>
       <RequirePermission action="ocr.view">
       <div className="w-full">
-        <InvoiceRecordsPanel ref={recordsPanelRef} fieldTemplate={fieldTemplate} canExport={can('ocr.export')} />
+        <InvoiceRecordsPanel ref={recordsPanelRef} fieldTemplates={fieldTemplates} canExport={can('ocr.export')} />
       </div>
 
       {showEntryModal && (
         <OcrEntryModal
-          fieldTemplate={fieldTemplate}
+          fieldTemplates={fieldTemplates}
           templateLoading={templateLoading}
           onClose={() => setShowEntryModal(false)}
           onSubmitted={handleSubmitted}

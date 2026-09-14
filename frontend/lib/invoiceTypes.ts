@@ -1,10 +1,14 @@
 export type FieldType = 'text' | 'date' | 'currency';
 
+export type RecordType = 'invoice' | 'mobile_money_receipt';
+
 export type FieldTemplateItem = {
   key: string;
   label: string;
   type: FieldType;
 };
+
+export type FieldTemplatesByType = Record<RecordType, FieldTemplateItem[]>;
 
 export type FieldOrigin =
   | 'auto'
@@ -47,6 +51,7 @@ export type InvoiceImageDetail = InvoiceImageSummary & {
 
 export type InvoiceRecord = {
   id: number;
+  record_type: RecordType;
   created_at: string;
   updated_at: string;
   fields: Record<string, FieldValue>;
@@ -63,6 +68,7 @@ export type InvoiceImageUpload = {
 };
 
 export type CreateInvoiceRecordPayload = {
+  record_type: RecordType;
   fields: Record<string, FieldValue>;
   line_items: LineItem[];
   images: InvoiceImageUpload[];

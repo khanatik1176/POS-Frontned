@@ -2,14 +2,14 @@ import { apiFetch, API_URL } from './api';
 import { submitOrQueue } from './offlineSync';
 import {
   CreateInvoiceRecordPayload,
-  FieldTemplateItem,
+  FieldTemplatesByType,
   InvoiceImageDetail,
   InvoiceRecord,
 } from './invoiceTypes';
 
-export async function fetchFieldTemplate(): Promise<FieldTemplateItem[]> {
-  const data = await apiFetch<{ fields: FieldTemplateItem[] }>('/invoices/field-template/');
-  return data.fields;
+export async function fetchFieldTemplates(): Promise<FieldTemplatesByType> {
+  const data = await apiFetch<{ templates: FieldTemplatesByType }>('/invoices/field-template/');
+  return data.templates;
 }
 
 export async function listInvoiceRecords(): Promise<InvoiceRecord[]> {

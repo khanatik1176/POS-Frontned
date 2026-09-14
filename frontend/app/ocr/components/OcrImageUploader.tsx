@@ -1,13 +1,10 @@
 'use client';
 
 import { useRef } from 'react';
-import { Camera, Download, FileImage, Loader2, X } from 'lucide-react';
-import Pagination from '../../components/Pagination';
-import { usePagination } from '@/lib/usePagination';
-import { exportToExcel } from '@/lib/exportExcel';
+import { Camera, FileImage, Loader2, X } from 'lucide-react';
 import { compressImageToBase64 } from '@/lib/imageUtils';
 import { runOcr } from '@/lib/ocrEngine';
-import { ExtractedField, extractFields } from '@/lib/ocrFieldMapping';
+import { ExtractedField } from '@/lib/ocrFieldMapping';
 
 export type UploadedImage = {
   clientId: string;
@@ -26,6 +23,11 @@ interface Props {
   images: UploadedImage[];
   onChange: (updater: ImagesUpdater) => void;
   onFieldsExtracted: (extracted: Record<string, ExtractedField>) => void;
+  onImageSelected: () => void;
+  extractFields: (lines: { text: string; confidence: number }[]) => Record<string, ExtractedField>;
+  mergeExtractedFields?: (
+    ...results: Array<Record<string, ExtractedField>>
+  ) => Record<string, ExtractedField>;
 }
 
 const statusLabel: Record<UploadedImage['status'], string> = {
@@ -42,21 +44,20 @@ const statusClass: Record<UploadedImage['status'], string> = {
   error: 'text-rose-600 dark:text-rose-400',
 };
 
-export default function OcrImageUploader({ images, onChange, onFieldsExtracted }: Props) {
+export default function OcrImageUploader({
+  images,
+  onChange,
+  onFieldsExtracted,
+  onImageSelected,
+  extractFields,
+  mergeExtractedFields,
+}: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
-  const { page, setPage, pageSize, setPageSize, totalPages, paged: pagedImages } = usePagination(images);
-
-  const handleExport = () => {
-    exportToExcel(
-      `uploaded-images-${new Date().toISOString().slice(0, 10)}`,
-      'Images',
-      [
-        { header: 'File', key: 'file', width: 28 },
-        { header: 'Status', key: 'status', width: 30 },
-      ],
-      images.map((img) => ({ file: img.fileName, status: statusLabel[img.status] })),
-    );
-  };
+  // Only the newest upload may write into the form. Without this, replacing
+  // an image while its OCR is still running lets the old pass finish last
+  // and overwrite the new image's results.
+  const latestImageIdRef = useRef<string | null>(null);
+  const image = images[0];
 
   const processFile = async (file: File, clientId: string) => {
     try {
@@ -70,7 +71,7 @@ export default function OcrImageUploader({ images, onChange, onFieldsExtracted }
 
     try {
       const result = await runOcr(file);
-      const text = result.lines.map((line) => line.text).join('\n');
+      const text = [...result.lines, ...result.altLines].map((line) => line.text).join('\n');
       onChange((current) =>
         current.map((img) =>
           img.clientId === clientId
@@ -78,8 +79,15 @@ export default function OcrImageUploader({ images, onChange, onFieldsExtracted }
             : img,
         ),
       );
-      if (result.readable) {
-        onFieldsExtracted(extractFields(result.lines));
+      // Apply whatever we could parse even when the image is marked
+      // unreadable — empty fields are worse than partial autofill.
+      if (latestImageIdRef.current === clientId && (result.lines.length > 0 || result.altLines.length > 0)) {
+        const primary = extractFields(result.lines);
+        const secondary = extractFields(result.altLines);
+        const merged = mergeExtractedFields
+          ? mergeExtractedFields(primary, secondary)
+          : { ...secondary, ...primary };
+        onFieldsExtracted(merged);
       }
     } catch {
       onChange((current) => current.map((img) => (img.clientId === clientId ? { ...img, status: 'error' } : img)));
@@ -88,20 +96,33 @@ export default function OcrImageUploader({ images, onChange, onFieldsExtracted }
 
   const handleFiles = (fileList: FileList | null) => {
     if (!fileList || fileList.length === 0) return;
-    const newImages: UploadedImage[] = Array.from(fileList).map((file) => ({
+    // Only one screenshot/photo at a time - a new selection replaces
+    // whatever was uploaded before.
+    const file = fileList[0];
+    const newImage: UploadedImage = {
       clientId: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
       fileName: file.name || 'capture.jpg',
       previewUrl: URL.createObjectURL(file),
       status: 'processing',
       ocrText: '',
       contentType: file.type || 'image/jpeg',
-    }));
-    onChange((current) => [...current, ...newImages]);
-    newImages.forEach((img, i) => processFile(Array.from(fileList)[i], img.clientId));
+    };
+    latestImageIdRef.current = newImage.clientId;
+    onChange((current) => {
+      current.forEach((img) => URL.revokeObjectURL(img.previewUrl));
+      return [newImage];
+    });
+    onImageSelected();
+    processFile(file, newImage.clientId);
   };
 
   const removeImage = (clientId: string) => {
-    onChange((current) => current.filter((img) => img.clientId !== clientId));
+    latestImageIdRef.current = null;
+    onChange((current) => {
+      const target = current.find((img) => img.clientId === clientId);
+      if (target) URL.revokeObjectURL(target.previewUrl);
+      return current.filter((img) => img.clientId !== clientId);
+    });
   };
 
   return (
@@ -113,13 +134,12 @@ export default function OcrImageUploader({ images, onChange, onFieldsExtracted }
           className="inline-flex items-center gap-2 rounded-xl border border-dashed border-neutral-300 bg-white/70 px-4 py-3 text-sm font-medium text-neutral-700 transition hover:-translate-y-0.5 dark:border-neutral-700 dark:bg-neutral-900/70 dark:text-neutral-200"
         >
           <FileImage size={16} />
-          Upload screenshot / photo
+          {image ? 'Replace screenshot / photo' : 'Upload screenshot / photo'}
         </button>
         <input
           ref={inputRef}
           type="file"
           accept="image/*"
-          multiple
           capture="environment"
           className="hidden"
           onChange={(e) => {
@@ -129,59 +149,27 @@ export default function OcrImageUploader({ images, onChange, onFieldsExtracted }
         />
       </div>
 
-      {images.length > 0 && (
-        <div className="mt-4">
-          <div className="mb-2 flex justify-end">
-            <button
-              type="button"
-              onClick={handleExport}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-neutral-300 px-2.5 py-1.5 text-xs font-medium text-neutral-600 transition hover:-translate-y-0.5 dark:border-neutral-700 dark:text-neutral-300"
-            >
-              <Download size={12} />
-              Export
-            </button>
+      {image && (
+        <div className="mt-4 flex items-center gap-3 rounded-xl border border-neutral-200 bg-white/70 p-3 dark:border-neutral-800 dark:bg-neutral-900/70">
+          <img src={image.previewUrl} alt={image.fileName} className="h-12 w-12 shrink-0 rounded-lg object-cover" />
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-medium text-neutral-800 dark:text-neutral-100">{image.fileName}</p>
+            <p className={`flex items-center gap-1.5 text-xs font-medium ${statusClass[image.status]}`}>
+              {image.status === 'processing' && <Loader2 size={12} className="animate-spin" />}
+              {statusLabel[image.status]}
+            </p>
           </div>
-          <div className="w-full max-w-full overflow-x-auto rounded-xl border border-neutral-200 bg-white/70 dark:border-neutral-800 dark:bg-neutral-900/70">
-            <table className="w-full min-w-[420px] text-sm">
-              <thead className="bg-neutral-50/80 dark:bg-neutral-900/50">
-                <tr className="border-b border-neutral-200/60 dark:border-neutral-800/60">
-                  <th className="w-16 px-3 py-2.5 text-left text-[11px] font-bold uppercase tracking-widest text-neutral-500 dark:text-neutral-400">Preview</th>
-                  <th className="px-3 py-2.5 text-left text-[11px] font-bold uppercase tracking-widest text-neutral-500 dark:text-neutral-400">File</th>
-                  <th className="px-3 py-2.5 text-left text-[11px] font-bold uppercase tracking-widest text-neutral-500 dark:text-neutral-400">Status</th>
-                  <th className="w-12 px-3 py-2.5 text-right text-[11px] font-bold uppercase tracking-widest text-neutral-500 dark:text-neutral-400" />
-                </tr>
-              </thead>
-              <tbody>
-                {pagedImages.map((img) => (
-                  <tr key={img.clientId} className="border-b border-neutral-100/80 last:border-b-0 dark:border-neutral-800/40">
-                    <td className="px-3 py-2.5">
-                      <img src={img.previewUrl} alt={img.fileName} className="h-11 w-11 rounded-lg object-cover" />
-                    </td>
-                    <td className="max-w-[200px] truncate px-3 py-2.5 font-medium text-neutral-800 dark:text-neutral-100">{img.fileName}</td>
-                    <td className={`px-3 py-2.5 text-xs font-medium ${statusClass[img.status]}`}>
-                      <span className="flex items-center gap-1.5">
-                        {img.status === 'processing' && <Loader2 size={12} className="animate-spin" />}
-                        {statusLabel[img.status]}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2.5 text-right">
-                      <button
-                        type="button"
-                        onClick={() => removeImage(img.clientId)}
-                        className="rounded-full p-1.5 text-neutral-400 transition hover:bg-neutral-100 hover:text-neutral-700 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
-                        aria-label="Remove image"
-                      >
-                        <X size={14} />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <Pagination page={page} totalPages={totalPages} onPageChange={setPage} totalItems={images.length} pageSize={pageSize} onPageSizeChange={setPageSize} />
+          <button
+            type="button"
+            onClick={() => removeImage(image.clientId)}
+            className="rounded-full p-1.5 text-neutral-400 transition hover:bg-neutral-100 hover:text-neutral-700 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
+            aria-label="Remove image"
+          >
+            <X size={14} />
+          </button>
         </div>
       )}
+
       <p className="mt-2 flex items-center gap-1.5 text-xs text-neutral-400">
         <Camera size={12} />
         On mobile you can capture directly from the camera.
