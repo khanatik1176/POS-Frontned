@@ -5,15 +5,17 @@ const LABEL_PATTERNS: Record<string, RegExp[]> = {
   transaction_id: [
     /trx[\s.:_-]*[il1|]d/i,
     /transact[a-z]*[\s.:_-]*[il1|]d/i,
-    /ট্রানজেকশন\s*আই[ডদভ]ি/,
+    // Tesseract often drops the nukta / confuses ড↔দ↔ভ on "আইডি".
+    /ট্রানজেক[শস]ন\s*আই[ডদভ]ি?/,
+    /ট্রানজেক[শস]ন/,
     /\b1110\b/,
   ],
-  phone_number: [/একাউন্ট/, /\baccount\b/i],
-  transaction_datetime: [/\btime\b/i, /সম[য়য়]/],
-  amount: [/\bamount\b/i, /পরিমাণ/],
-  charge: [/\bcharge\b/i, /চার্জ/],
+  phone_number: [/একাউন[্]?ট?/, /\baccount\b/i],
+  transaction_datetime: [/\btime\b/i, /সম[য়য়য]/],
+  amount: [/\bamount\b/i, /পরিমা[ণন]/],
+  charge: [/\bcharge\b/i, /চা[্]?র্?জ/],
   total_amount: [/\btotal\b/i],
-  reference_name: [/\breference\b/i, /রেফারেন্স/],
+  reference_name: [/\breference\b/i, /রেফারেন[্]?স/],
 };
 
 const BENGALI_DIGITS = '০১২৩৪৫৬৭৮৯';
@@ -25,8 +27,8 @@ const DATETIME_LONG_RE = /\d{1,2}\s+[A-Za-z]+\s+\d{4},?\s*\d{1,2}:\d{2}\s*[APap]
 const DATETIME_COMPACT_RE = /\d{1,2}:\d{2}\s*[APap][Mm]\s+\d{1,2}\/\d{1,2}\/\d{2,4}/;
 const DATETIME_COMPACT_DATE_FIRST_RE = /\d{1,2}\/\d{1,2}\/\d{2,4}\s+\d{1,2}:\d{2}\s*[APap][Mm]/;
 const CURRENCY_VALUE_RE = /(?:[-−]\s*)?(?:৳|%|Tk\.?|টাকা)?\s*([0-9][0-9,]*\.?[0-9]{0,2})\s*(?:৳|%|Tk\.?|টাকা)?/g;
-const NO_CHARGE_RE = /no\s*charge/i;
-const COPY_ICON_JUNK_RE = /\[[A-Za-z0-9]{0,3}\]?/g;
+const NO_CHARGE_RE = /no\s*charge|চার্জ\s*নেই|কোন\s*চার্জ\s*নেই|বিনা\s*চার্জ/i;
+const COPY_ICON_JUNK_RE = /\[\s*[A-Za-z0-9]{0,3}\s*\]|\[\s*[A-Za-z0-9]{1,3}(?=\s)/g;
 const NAME_TOKEN_RE = /[A-Za-z][A-Za-z .]{1,29}/g;
 
 const FIELD_MIN_CONFIDENCE = 80;
@@ -66,12 +68,24 @@ function extractDatetime(text: string): string | null {
 }
 
 function normalizeCurrencyAmount(value: string): string {
-  if (/^[68]\d{3}\.\d{2}$/.test(value)) {
+  // ৳ misread as a glued leading 6/8 (6480.00 → 480.00, 6300.00 → 300.00).
+  if (/^[68]\d{3,}\.\d{2}$/.test(value)) {
     const stripped = value.slice(1);
     const whole = Number(stripped.split('.')[0]);
-    if (whole >= 1 && whole <= 999) return stripped;
+    if (whole >= 1 && whole <= 9999) return stripped;
   }
   return value;
+}
+
+function normalizeChargeAmount(value: string): string {
+  const normalized = normalizeCurrencyAmount(value);
+  // ৳5.00 → 65.00 / 85.00 on Bangla amount+charge grids.
+  if (/^[68]\d\.\d{2}$/.test(normalized)) return normalized.slice(1);
+  if (/^[68]\d{2}\.\d{2}$/.test(normalized)) {
+    const stripped = normalized.slice(1);
+    if (Number(stripped) <= 99) return stripped;
+  }
+  return normalized;
 }
 
 function extractCurrencyValues(text: string): string[] {
@@ -116,9 +130,11 @@ function extractReferenceName(rawText: string): string | null {
   remainder = remainder.replace(DATETIME_LONG_RE, '');
   remainder = remainder.replace(DATETIME_COMPACT_RE, '');
   remainder = remainder.replace(DATETIME_COMPACT_DATE_FIRST_RE, '');
+  // Strip copy-icon OCR junk before currency so "[0 Name" doesn't lose the 0
+  // into the amount regex and then turn "[Nafisha" into "isha".
+  remainder = remainder.replace(COPY_ICON_JUNK_RE, '');
   CURRENCY_VALUE_RE.lastIndex = 0;
   remainder = remainder.replace(CURRENCY_VALUE_RE, '');
-  remainder = remainder.replace(COPY_ICON_JUNK_RE, '');
   remainder = remainder.replace(/^[\s:–\-_|]+|[\s:–\-_|]+$/g, '').trim();
   remainder = cleanReferenceCandidate(remainder);
   if (isNameCandidate(remainder)) return remainder;
@@ -139,7 +155,15 @@ function isPlausibleTransactionId(value: string): boolean {
 }
 
 function normalizeTransactionId(value: string): string {
-  return value.replace(/[>|]+$/g, '').trim().replace(/I([A-Z])$/, '1$1');
+  let normalized = value.replace(/[>|]+$/g, '').trim();
+  // Trailing "IC"/"ID" often means "1C"/"1D".
+  normalized = normalized.replace(/I([A-Z])$/, '1$1');
+  // When OCR turns every "1" into "I", the ID becomes all letters — restore
+  // digits, but keep a 2-letter prefix like "DI"/"DH" intact.
+  if (/^[A-Za-z]+$/.test(normalized) && normalized.includes('I')) {
+    normalized = normalized.replace(/(?<=[A-Za-z]{2})I/g, '1');
+  }
+  return normalized;
 }
 
 function stripKnownLabels(text: string): string {
@@ -153,7 +177,10 @@ function stripKnownLabels(text: string): string {
 function extractTransactionId(text: string, loose = false): string | null {
   const normalized = normalizeDigits(text);
   const strict = TRANSACTION_ID_STRICT_RE.exec(normalized);
-  if (strict && isPlausibleTransactionId(strict[0])) return normalizeTransactionId(strict[0]);
+  if (strict) {
+    const candidate = normalizeTransactionId(strict[0]);
+    if (isPlausibleTransactionId(candidate)) return candidate;
+  }
   if (loose) {
     const looseRe = new RegExp(TRANSACTION_ID_LOOSE_RE.source, 'g');
     let match = looseRe.exec(normalized);
@@ -180,7 +207,7 @@ function extractValueFor(key: string, rawText: string, labeled = false): string 
     if (!values.length) return null;
     if (key === 'total_amount') return values.reduce((best, value) => (Number(value) > Number(best) ? value : best));
     if (key === 'amount') return values[0];
-    return values.length > 1 ? values[1] : values[0];
+    return normalizeChargeAmount(values.length > 1 ? values[1] : values[0]);
   }
   if (key === 'reference_name') return extractReferenceName(rawText);
   return null;
@@ -238,13 +265,17 @@ export function extractFields(lines: OcrLine[]): Record<string, ExtractedField> 
       if (patterns.some((pattern) => pattern.test(text))) {
         let value = extractValueFor(key, text, true);
         let confidence = lines[i].confidence;
-        if (!value && i + 1 < lines.length) {
-          const nextText = lines[i + 1].text || '';
-          if (nextText) {
+        // Bangla stacked layouts sometimes insert a junk OCR line between
+        // the label and the value — look one and two lines ahead.
+        if (!value) {
+          for (let offset = 1; offset <= 2 && i + offset < lines.length; offset += 1) {
+            const nextText = lines[i + offset].text || '';
+            if (!nextText) continue;
             const nextValue = extractValueFor(key, nextText, true);
             if (nextValue) {
               value = nextValue;
-              confidence = Math.max(lines[i].confidence, lines[i + 1].confidence);
+              confidence = Math.max(lines[i].confidence, lines[i + offset].confidence);
+              break;
             }
           }
         }

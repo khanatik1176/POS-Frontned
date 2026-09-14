@@ -1,7 +1,7 @@
 // Minimal PWA service worker for the /ocr page:
 //  - runtime cache-as-you-go so a previously visited page still loads offline
 //  - Background Sync handling for queued invoice-record submissions (FR-8/FR-11)
-const RUNTIME_CACHE = 'ocr-runtime-v1';
+const RUNTIME_CACHE = 'ocr-runtime-v2';
 const DB_NAME = 'ocr-invoice-db';
 const DB_VERSION = 1;
 const OUTBOX_STORE = 'outbox';

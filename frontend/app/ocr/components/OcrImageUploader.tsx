@@ -89,7 +89,8 @@ export default function OcrImageUploader({
           : { ...secondary, ...primary };
         onFieldsExtracted(merged);
       }
-    } catch {
+    } catch (err) {
+      console.error('OCR failed', err);
       onChange((current) => current.map((img) => (img.clientId === clientId ? { ...img, status: 'error' } : img)));
     }
   };
